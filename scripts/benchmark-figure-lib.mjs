@@ -52,8 +52,32 @@ export function sizeTickLabel(sizeBytes) {
 export function plotCoords(table, yKey, xKey = 'sizeBytes') {
   return table
     .filter((r) => r[yKey] != null && r[xKey] != null)
-    .map((r) => `  ({${miB(r[xKey])}}, {${Number(r[yKey]).toFixed(2)}})`)
+    .map((r) => `  (${miB(r[xKey])}, ${Number(r[yKey]).toFixed(2)})`)
     .join('\n');
+}
+
+/** Rows with MiB x and numeric y (no brace coords — faster for pdflatex). */
+export function seriesCoords(table, yKey, xKey = 'sizeBytes') {
+  return plotCoords(table, yKey, xKey);
+}
+
+/**
+ * Explicit x ticks from data MiB values. Never use xtick=data (pgfplots can hang).
+ */
+export function axisMiBOpts(table, xKey = 'sizeBytes') {
+  const rows = table.filter((r) => r[xKey] != null);
+  if (rows.length === 0) return 'xmin=0';
+  const xs = rows.map((r) => miB(r[xKey]));
+  const labels = rows.map((r) => sizeTickLabel(r[xKey])).join(',');
+  const pad = (Math.max(...xs.map(Number)) - Math.min(...xs.map(Number))) * 0.08 || 0.01;
+  const xmin = (Math.min(...xs.map(Number)) - pad).toFixed(4);
+  const xmax = (Math.max(...xs.map(Number)) + pad).toFixed(4);
+  return `xtick={${xs.join(',')}}, xticklabels={${labels}}, xmin=${xmin}, xmax=${xmax}, scaled x ticks=false`;
+}
+
+/** One small axis block for 2x2 panel (no groupplot). */
+export function panelAxis(title, xlabel, ylabel, extra = '') {
+  return `nearbytes, width=\\linewidth, height=4.2cm, title={${title}}, xlabel={${xlabel}}, ylabel={${ylabel}}, ymin=0, ${extra}`;
 }
 
 /** pgfplots error bar table: x, y, yerrplus, yerrminus */

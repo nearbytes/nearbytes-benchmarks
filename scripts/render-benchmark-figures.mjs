@@ -11,10 +11,11 @@ import {
   PGF_PREAMBLE,
   COLORS,
   plotCoords,
-  errorBarTable,
+  seriesCoords,
+  axisMiBOpts,
+  panelAxis,
   hasErrorBars,
   miB,
-  sizeTickLabel,
 } from './benchmark-figure-lib.mjs';
 
 function arg(name, fallback) {
@@ -181,19 +182,8 @@ const decompRows = report.latencyDecompositionTable ?? [];
 const primaryGp = goodputRows.find((r) => r.sizeBytes === 32 * 1024 * 1024) ?? goodputRows[0];
 const goodput = report.throughput?.receiverGoodputMbps ?? primaryGp?.goodputMbps;
 
-function indexedSeries(table, yKey, xKey = 'sizeBytes') {
-  const rows = table.filter((r) => r[yKey] != null && r[xKey] != null);
-  const n = rows.length;
-  const coords = rows
-    .map((r, i) => `  (${i + 1}, ${Number(r[yKey]).toFixed(2)})`)
-    .join('\n');
-  const labels = rows.map((r) => sizeTickLabel(r[xKey])).join(',');
-  const ticks = rows.map((_, i) => i + 1).join(',');
-  return { n, coords, labels, ticks };
-}
-
-function stackedBarCoords(table, yKey) {
-  return indexedSeries(table, yKey).coords;
+function axisOpts(table, xKey = 'sizeBytes') {
+  return axisMiBOpts(table, xKey);
 }
 
 function latencyPlotBody(table, yKey) {
@@ -217,7 +207,6 @@ ${plotCoords(table, yKey)}
 }
 
 const plotWithErrors = latencyPlotBody;
-const stackedDecompCoords = stackedBarCoords;
 
 const goodputSweepRows = goodputRows
   .map(
@@ -251,11 +240,15 @@ ${goodputSweepRows || '--- & 0 & --- & --- & --- \\\\'}
 \\end{table}
 `;
 
-const decompSym = indexedSeries(decompRows, 'publishCpuP50');
-const decompSyncSym = indexedSeries(decompRows, 'syncTransferP50');
-const latSym = indexedSeries(latencySource, 'p50');
-const gpSym = indexedSeries(goodputRows, 'goodputMbps');
-const gpCpuSym = indexedSeries(goodputRows, 'publishCpuP50');
+const decompCryptoCoords = seriesCoords(decompRows, 'publishCpuP50');
+const decompSyncCoords = seriesCoords(decompRows, 'syncTransferP50');
+const latP50Coords = seriesCoords(latencySource, 'p50');
+const latP95Coords = seriesCoords(latencySource, 'p95');
+const gpCoords = seriesCoords(goodputRows, 'goodputMbps');
+const gpCpuCoords = seriesCoords(goodputRows, 'publishCpuP50');
+const decompAxis = axisOpts(decompRows);
+const latAxis = axisOpts(latencySource);
+const gpAxis = axisOpts(goodputRows);
 
 const publishCpuTableTex = `% Auto-generated publish CPU (sender addFile path)
 \\begin{table}[t]
@@ -278,12 +271,9 @@ const latencyPlot = `% Auto-generated latency (total)
 \\centering
 \\begin{tikzpicture}
 \\begin{axis}[nearbytes, width=0.92\\linewidth, height=5.5cm,
-  xlabel={Payload size (MiB)}, ylabel={One-way latency (ms)}, ymin=0,
-  xtick={${latSym.ticks}}, xticklabels={${latSym.labels}}, xtick=data, xmin=0.5, xmax=${latSym.n + 0.5}
-\\addplot+[${COLORS.total}, thick, mark=*] coordinates {${latSym.coords}};
-\\addplot+[mark=square*, ${COLORS.p95}, dashed, thick] coordinates {
-${indexedSeries(latencySource, 'p95').coords}
-};
+  xlabel={Payload size (MiB)}, ylabel={One-way latency (ms)}, ymin=0, ${latAxis}]
+\\addplot+[${COLORS.total}, thick, mark=*] coordinates {${latP50Coords}};
+\\addplot+[mark=square*, ${COLORS.p95}, dashed, thick] coordinates {${latP95Coords}};
 \\legend{$p_{50}$ (total), $p_{95}$}
 \\end{axis}
 \\end{tikzpicture}
@@ -300,15 +290,14 @@ const latencyCryptoPlot =
 \\begin{tikzpicture}
 \\begin{axis}[nearbytes, width=0.92\\linewidth, height=5.5cm,
   xlabel={Payload size (MiB)}, ylabel={Latency (ms)}, ymin=0,
-  ybar stacked, bar width=0.18,
-  xtick={${decompSym.ticks}}, xticklabels={${decompSym.labels}}, xtick=data, xmin=0.5, xmax=${decompSym.n + 0.5},
-  legend style={at={(0.02,0.98)},anchor=north west},
-  enlarge x limits=0.12]
+  ybar stacked, bar width=0.06,
+  ${decompAxis},
+  legend style={at={(0.02,0.98)},anchor=north west}]
 \\addplot+[ybar, fill=${COLORS.crypto}!90, draw=${COLORS.crypto}!90] coordinates {
-${decompSym.coords}
+${decompCryptoCoords}
 };
 \\addplot+[ybar, fill=${COLORS.sync}!85, draw=${COLORS.sync}!85] coordinates {
-${decompSyncSym.coords}
+${decompSyncCoords}
 };
 \\legend{Publish CPU (encrypt+store), Sync+receive (residual)}
 \\end{axis}
@@ -326,9 +315,8 @@ const goodputPlot =
 \\centering
 \\begin{tikzpicture}
 \\begin{axis}[nearbytes, width=0.92\\linewidth, height=5.5cm,
-  xlabel={Stream size (MiB)}, ylabel={Application goodput (Mb/s)}, ymin=0,
-  xtick={${gpSym.ticks}}, xticklabels={${gpSym.labels}}, xtick=data, xmin=0.5, xmax=${gpSym.n + 0.5}
-\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpSym.coords}};
+  xlabel={Stream size (MiB)}, ylabel={Application goodput (Mb/s)}, ymin=0, ${gpAxis}]
+\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpCoords}};
 \\end{axis}
 \\end{tikzpicture}
 \\caption{Application goodput vs stream size (${esc(topology)}). Includes encryption, framing, and sync; bootstrap 95\\% CI across seeds.}
@@ -344,18 +332,15 @@ const goodputCryptoPlot =
 \\centering
 \\begin{tikzpicture}
 \\begin{axis}[nearbytes, width=0.92\\linewidth, height=5.5cm, name plot=goodput,
-  xlabel={Stream size (MiB)}, ylabel={Goodput (Mb/s)}, ymin=0,
-  xtick={${gpSym.ticks}}, xticklabels={${gpSym.labels}}, xtick=data, xmin=0.5, xmax=${gpSym.n + 0.5}
-\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpSym.coords}};
+  xlabel={Stream size (MiB)}, ylabel={Goodput (Mb/s)}, ymin=0, ${gpAxis}]
+\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpCoords}};
 \\end{axis}
 \\begin{axis}[nearbytes, width=0.92\\linewidth, height=5.5cm,
   at={(goodput.south west)}, anchor=south west,
   axis y line*=right, axis x line=none, ymin=0,
   ylabel={Stream publish CPU (ms)}, ylabel style={${COLORS.crypto}},
   yticklabel style={${COLORS.crypto}}]
-\\addplot+[mark=triangle*, thick, ${COLORS.crypto}, dashed] coordinates {
-${gpCpuSym.coords}
-};
+\\addplot+[mark=triangle*, thick, ${COLORS.crypto}, dashed] coordinates {${gpCpuCoords}};
 \\end{axis}
 \\end{tikzpicture}
 \\caption{Goodput vs stream size with sender publish CPU overlay (${esc(topology)}). Bars: sustained goodput; dashed line: $p_{50}$ CPU to encrypt and journal each stream before wire transfer.}
@@ -366,30 +351,43 @@ ${gpCpuSym.coords}
 
 const performancePanel =
   decompRows.length > 0 && goodputRows.length > 0
-    ? `% Auto-generated 2x2 performance panel
+    ? `% Auto-generated 2x2 performance panel (minipage grid — no groupplot)
 \\begin{figure*}[t]
 \\centering
+\\begin{minipage}[t]{0.48\\textwidth}
+\\centering
 \\begin{tikzpicture}
-\\begin{groupplot}[
-  group style={group size=2 by 2, horizontal sep=1.4cm, vertical sep=1.2cm},
-  width=0.44\\linewidth,
-  height=0.34\\linewidth,
-]
-\\nextgroupplot[nearbytes, title={\\textbf{a) Latency decomposition}}, xlabel={MiB}, ylabel={ms}, ymin=0, ybar stacked, bar width=0.22,
-  xtick={${decompSym.ticks}}, xticklabels={${decompSym.labels}}, xtick=data, xmin=0.5, xmax=${decompSym.n + 0.5}
-\\addplot+[ybar, fill=${COLORS.crypto}!90] coordinates {${decompSym.coords}};
-\\addplot+[ybar, fill=${COLORS.sync}!85] coordinates {${decompSyncSym.coords}};
-\\nextgroupplot[nearbytes, title={\\textbf{b) Total latency}}, xlabel={MiB}, ylabel={ms}, ymin=0,
-  xtick={${latSym.ticks}}, xticklabels={${latSym.labels}}, xtick=data, xmin=0.5, xmax=${latSym.n + 0.5}
-\\addplot+[${COLORS.total}, thick, mark=*] coordinates {${latSym.coords}};
-\\nextgroupplot[nearbytes, title={\\textbf{c) Goodput}}, xlabel={MiB}, ylabel={Mb/s}, ymin=0,
-  xtick={${gpSym.ticks}}, xticklabels={${gpSym.labels}}, xtick=data, xmin=0.5, xmax=${gpSym.n + 0.5}
-\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpSym.coords}};
-\\nextgroupplot[nearbytes, title={\\textbf{d) Stream publish CPU}}, xlabel={MiB}, ylabel={ms}, ymin=0,
-  xtick={${gpCpuSym.ticks}}, xticklabels={${gpCpuSym.labels}}, xtick=data, xmin=0.5, xmax=${gpCpuSym.n + 0.5}
-\\addplot+[mark=triangle*, thick, ${COLORS.crypto}] coordinates {${gpCpuSym.coords}};
-\\end{groupplot}
+\\begin{axis}[${panelAxis('a) Latency decomposition', 'MiB', 'ms', `ybar stacked, bar width=0.06, ${decompAxis}`)}]
+\\addplot+[ybar, fill=${COLORS.crypto}!90] coordinates {${decompCryptoCoords}};
+\\addplot+[ybar, fill=${COLORS.sync}!85] coordinates {${decompSyncCoords}};
+\\end{axis}
 \\end{tikzpicture}
+\\end{minipage}\\hfill
+\\begin{minipage}[t]{0.48\\textwidth}
+\\centering
+\\begin{tikzpicture}
+\\begin{axis}[${panelAxis('b) Total latency', 'MiB', 'ms', latAxis)}]
+\\addplot+[${COLORS.total}, thick, mark=*] coordinates {${latP50Coords}};
+\\end{axis}
+\\end{tikzpicture}
+\\end{minipage}
+\\par\\medskip
+\\begin{minipage}[t]{0.48\\textwidth}
+\\centering
+\\begin{tikzpicture}
+\\begin{axis}[${panelAxis('c) Goodput', 'MiB', 'Mb/s', gpAxis)}]
+\\addplot+[${COLORS.goodput}, thick, mark=*] coordinates {${gpCoords}};
+\\end{axis}
+\\end{tikzpicture}
+\\end{minipage}\\hfill
+\\begin{minipage}[t]{0.48\\textwidth}
+\\centering
+\\begin{tikzpicture}
+\\begin{axis}[${panelAxis('d) Stream publish CPU', 'MiB', 'ms', gpAxis)}]
+\\addplot+[mark=triangle*, thick, ${COLORS.crypto}] coordinates {${gpCpuCoords}};
+\\end{axis}
+\\end{tikzpicture}
+\\end{minipage}
 \\caption{Performance overview (${esc(topology)}${report.campaignSeeds != null ? `, ${report.campaignSeeds} seeds` : ''}). (a) Latency split into local publish path vs network+peer delivery. (b--d) End-to-end latency, application goodput, and stream publish CPU.}
 \\label{fig:bench-performance-panel}
 \\end{figure*}
@@ -439,6 +437,7 @@ const masterTable = `% Auto-generated figure inputs (included from paper.tex via
 \\input{${FIG}/benchmark-latency-table.tex}
 \\input{${FIG}/benchmark-goodput-table.tex}
 \\input{${FIG}/benchmark-publish-cpu-table.tex}
+\\input{${FIG}/benchmark-performance-panel.tex}
 `;
 
 await writeFile(path.join(outDir, 'benchmark-figures-preamble.tex'), PGF_PREAMBLE);
