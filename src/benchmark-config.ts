@@ -6,12 +6,12 @@
  * | quick         | CI smoke (≤30s)                               |
  * | latency-only  | Fast latency sweep, no throughput             |
  * | full          | Legacy research run (~3–4 min)                |
- * | paper         | Conference-grade: warmup discard, n≥10, stream  |
+ * | campaign      | Publication-grade: warmup discard, n≥10, stream |
  *
- * Set NEARBYTES_BENCH_PROFILE=paper for publication numbers.
+ * Set NEARBYTES_BENCH_PROFILE=campaign for publication-grade numbers.
  */
 
-export type BenchProfileMode = 'full' | 'quick' | 'latency-only' | 'paper';
+export type BenchProfileMode = 'full' | 'quick' | 'latency-only' | 'campaign';
 export type ThroughputMode = 'batch' | 'stream' | 'none';
 
 export interface BenchProfile {
@@ -28,7 +28,7 @@ export interface BenchProfile {
   readonly throughputFileCount: number;
   /** Single-stream size when throughputStreamSizes is empty. */
   readonly throughputStreamBytes: number;
-  /** Sustained goodput sweep sizes (paper: 1 / 32 / 128 MiB). */
+  /** Sustained goodput sweep sizes (campaign: 1 / 32 / 128 MiB). */
   readonly throughputStreamSizes: readonly number[];
   readonly streamInterPauseMs: number;
   readonly discoveryMs: number;
@@ -59,7 +59,7 @@ const FULL_PAYLOAD_SIZES = [
   4 * 1024 * 1024,
 ] as const;
 
-const PAPER_PAYLOAD_SIZES = [
+const CAMPAIGN_PAYLOAD_SIZES = [
   4 * 1024,
   64 * 1024,
   256 * 1024,
@@ -71,7 +71,7 @@ const QUICK_PAYLOAD_SIZES = [4 * 1024, 64 * 1024] as const;
 
 const LATENCY_ONLY_SIZES = [4 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024] as const;
 
-const PAPER_STREAM_SIZES = [
+const CAMPAIGN_STREAM_SIZES = [
   1 * 1024 * 1024,
   32 * 1024 * 1024,
   128 * 1024 * 1024,
@@ -114,7 +114,7 @@ export function effectiveStreamSizes(profile: BenchProfile): readonly number[] {
 export function getBenchProfileMode(): BenchProfileMode {
   const explicit = process.env['NEARBYTES_BENCH_PROFILE']?.toLowerCase();
   if (explicit === 'latency-only' || explicit === 'latency') return 'latency-only';
-  if (explicit === 'paper') return 'paper';
+  if (explicit === 'campaign') return 'campaign';
   if (explicit === 'quick') return 'quick';
   if (explicit === 'full') return 'full';
   if (isQuickBench()) return 'quick';
@@ -151,12 +151,12 @@ export function getBenchProfile(): BenchProfile {
     };
   }
 
-  if (mode === 'paper') {
+  if (mode === 'campaign') {
     return {
       mode,
       quick: false,
       latencyOnly: false,
-      payloadSizes: PAPER_PAYLOAD_SIZES,
+      payloadSizes: CAMPAIGN_PAYLOAD_SIZES,
       latencyRepeats: benchEnvInt('NEARBYTES_BENCH_LATENCY_REPEATS', 5),
       latencyWarmupRepeats: benchEnvInt('NEARBYTES_BENCH_LATENCY_WARMUP', 1),
       throughputMode: 'stream',
@@ -166,7 +166,7 @@ export function getBenchProfile(): BenchProfile {
         'NEARBYTES_BENCH_STREAM_BYTES',
         32 * 1024 * 1024,
       ),
-      throughputStreamSizes: parseStreamSizesEnv() ?? PAPER_STREAM_SIZES,
+      throughputStreamSizes: parseStreamSizesEnv() ?? CAMPAIGN_STREAM_SIZES,
       streamInterPauseMs: benchEnvMs('NEARBYTES_BENCH_STREAM_INTER_MS', 500),
       discoveryMs: benchEnvMs('NEARBYTES_BENCH_DISCOVERY_MS', 2000),
       interTrialMs: benchEnvMs('NEARBYTES_BENCH_INTER_TRIAL_MS', 25),

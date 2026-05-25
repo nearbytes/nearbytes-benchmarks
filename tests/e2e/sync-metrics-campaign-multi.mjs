@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Multi-seed paper campaign: K independent paper-profile runs → aggregate JSON + terminal.
- * LaTeX: yarn paper:figures (after this completes).
+ * Multi-seed campaign: K independent campaign-profile runs → aggregate JSON + terminal.
+ * Render LaTeX with `yarn report:figures` (after this completes).
  *
- *   yarn e2e:paper:campaign
- *   NEARBYTES_BENCH_CAMPAIGN_SEEDS=3 yarn e2e:paper:campaign
+ *   yarn e2e:campaign:multi
+ *   NEARBYTES_BENCH_CAMPAIGN_SEEDS=3 yarn e2e:campaign:multi
  */
 
-import { mkdir, rm, access, copyFile, symlink } from 'fs/promises';
+import { mkdir, rm, copyFile, symlink } from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 import { getBenchPaths, getRepoRoot } from './lib/config.mjs';
@@ -26,8 +26,8 @@ const seedCount = Math.max(
 const repoRoot = getRepoRoot();
 const paths = await getBenchPaths();
 const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-const campaignDir = path.join(paths.benchReportsDir, 'e2e-paper-campaign', runId);
-const latestDir = path.join(paths.benchReportsDir, 'e2e-paper-campaign', 'latest');
+const campaignDir = path.join(paths.benchReportsDir, 'e2e-campaign', runId);
+const latestDir = path.join(paths.benchReportsDir, 'e2e-campaign', 'latest');
 
 function runNode(args, opts = {}) {
   return new Promise((res, rej) => {
@@ -49,7 +49,7 @@ async function runSeed(seed) {
 
   const common = {
     NEARBYTES_BENCH_BASE: workBase,
-    NEARBYTES_BENCH_PROFILE: 'paper',
+    NEARBYTES_BENCH_PROFILE: 'campaign',
     NEARBYTES_BENCH_SKIP_FIGURES: '1',
     NEARBYTES_BENCH_DISCOVERY_MS: '2000',
     NEARBYTES_BENCH_GRACE_MS: '3000',
@@ -94,7 +94,7 @@ async function runSeed(seed) {
     '--out',
     reportPath,
     '--topology',
-    `localhost paper campaign seed ${seed}`,
+    `localhost campaign seed ${seed}`,
     '--quiet',
   ]);
   return reportPath;
@@ -118,7 +118,7 @@ await runNode([
   '--out',
   campaignReport,
   '--topology',
-  `localhost paper campaign (${seedCount} seeds)`,
+  `localhost campaign (${seedCount} seeds)`,
 ]);
 
 await rm(latestDir, { recursive: true, force: true });
@@ -127,13 +127,13 @@ await copyFile(campaignReport, path.join(latestDir, 'bench-campaign-report.json'
 try {
   await symlink(campaignDir, path.join(latestDir, 'run'), 'dir');
 } catch (err) {
-  console.warn('[e2e:paper:campaign] latest symlink:', err.message);
+  console.warn('[e2e:campaign:multi] latest symlink:', err.message);
 }
 
 const report = await readBenchReport(campaignReport);
 printBenchReport(report, {
-  title: `e2e:paper:campaign complete (${seedCount} seeds)`,
+  title: `e2e:campaign:multi complete (${seedCount} seeds)`,
   reportPath: campaignReport,
 });
 console.log(`  latest:  ${path.join(latestDir, 'bench-campaign-report.json')}`);
-console.log(`  figures: yarn paper:figures\n`);
+console.log(`  figures: yarn report:figures\n`);

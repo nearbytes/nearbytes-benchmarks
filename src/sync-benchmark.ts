@@ -206,7 +206,7 @@ async function runSender(
     return { latency, throughput: null, trials };
   }
 
-  const preTpPause = profile.quick ? 500 : profile.mode === 'paper' ? 1000 : 5000;
+  const preTpPause = profile.quick ? 500 : profile.mode === 'campaign' ? 1000 : 5000;
   await sleepWithProgress('sender', 'pause before throughput phase', preTpPause, 500);
 
   if (profile.throughputMode === 'stream') {
@@ -636,8 +636,8 @@ async function main(): Promise<void> {
   resetProgressClock();
   benchProgress(
     roleLabel,
-    profile.mode === 'paper'
-      ? `phase 1/4 — setup (PAPER: ${profile.latencyRepeats}×${profile.payloadSizes.length} latency, ${effectiveStreamSizes(profile).length} stream sizes)`
+    profile.mode === 'campaign'
+      ? `phase 1/4 — setup (CAMPAIGN: ${profile.latencyRepeats}×${profile.payloadSizes.length} latency, ${effectiveStreamSizes(profile).length} stream sizes)`
       : profile.latencyOnly
         ? `phase 1/4 — setup (LATENCY-ONLY, ${profile.payloadSizes.length} payloads, no throughput)`
         : profile.quick
@@ -696,7 +696,7 @@ async function main(): Promise<void> {
     }
 
     if (profile.coordinatedTrials && swarmFormationMs === null) {
-      throw new Error('Paper benchmark requires friend-session-attached before trials');
+      throw new Error('Campaign benchmark requires friend-session-attached before trials');
     }
 
     const expectedLatency = profile.payloadSizes.length * profile.latencyRepeats;

@@ -22,7 +22,7 @@ export interface BenchMarker {
   readonly fields: Record<string, string | number | boolean>;
 }
 
-/** Wall-clock phases for paper tables (per process). */
+/** Wall-clock phases for report tables (per process). */
 export interface RunPhaseTiming {
   readonly bootMs: number;
   readonly profilePublishMs: number;

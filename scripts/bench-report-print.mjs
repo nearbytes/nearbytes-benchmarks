@@ -43,7 +43,7 @@ function line(char = '─', n = 72) {
 
 export function printBenchReport(report, opts = {}) {
   const { title = 'Benchmark report', reportPath = null } = opts;
-  const isCampaign = report.profile === 'paper-campaign' || report.campaignSeeds != null;
+  const isCampaign = report.profile === 'campaign' || report.campaignSeeds != null;
   const latency = report.latencyTable ?? report.syncLatencyTable ?? [];
   const goodput = report.goodputTable ?? [];
   const publishCpu = report.publishCpuTable ?? [];

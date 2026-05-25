@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Run one paper-profile Alice+Bob seed (used by bench:paper / e2e:paper:campaign). */
+/** Run one campaign-profile Alice+Bob seed (used by bench:campaign / e2e:campaign:multi). */
 
 import { mkdir, rm } from 'fs/promises';
 import path from 'path';
@@ -8,11 +8,11 @@ import { getRepoRoot } from './config.mjs';
 import { spawnBench, sleep, killStaleBenchProcesses, stopBenchChild } from './spawn-bench.mjs';
 
 const repoRoot = getRepoRoot();
-const seedDir = process.env['NEARBYTES_PAPER_SEED_DIR'];
-const workBase = process.env['NEARBYTES_PAPER_WORK_BASE'] ?? path.join(seedDir, 'work');
+const seedDir = process.env['NEARBYTES_CAMPAIGN_SEED_DIR'];
+const workBase = process.env['NEARBYTES_CAMPAIGN_WORK_BASE'] ?? path.join(seedDir, 'work');
 
 if (!seedDir) {
-  console.error('NEARBYTES_PAPER_SEED_DIR required');
+  console.error('NEARBYTES_CAMPAIGN_SEED_DIR required');
   process.exit(1);
 }
 
@@ -29,7 +29,7 @@ await mkdir(workBase, { recursive: true });
 
 const common = {
   NEARBYTES_BENCH_BASE: workBase,
-  NEARBYTES_BENCH_PROFILE: 'paper',
+  NEARBYTES_BENCH_PROFILE: 'campaign',
   NEARBYTES_BENCH_SKIP_FIGURES: '1',
   NEARBYTES_BENCH_DISCOVERY_MS: '2000',
   NEARBYTES_BENCH_GRACE_MS: '3000',
@@ -73,6 +73,6 @@ await runNode([
   '--out',
   path.join(seedDir, 'bench-report.json'),
   '--topology',
-  'localhost paper profile',
+  'localhost campaign profile',
   '--quiet',
 ]);

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Render LaTeX fragments for the paper from bench-report.json
+ * Render LaTeX table/figure fragments from bench-report.json.
  *
- *   node scripts/render-benchmark-figures.mjs --report bench-report.json --outdir ../paper-nearbytes-hypercore/figures
+ *   node scripts/render-benchmark-figures.mjs --report bench-report.json --outdir ./figures
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';
@@ -115,8 +115,8 @@ const latencyRows = latencySource
 const latencyCaption =
   report.profile === 'bidirectional-1mib'
     ? `Bidirectional friend carriage (Implementation~0): encrypted ${esc(topology)}. One-way receive latency is wall-clock from peer \\texttt{addFile} to local \\texttt{listFiles} ($n$ per direction).`
-    : report.profile === 'paper'
-      ? `One-way convergence latency (${esc(topology)}, \\textbf{paper profile}): encrypted payloads after \\texttt{friend-session-attached}; $n$ repeats per size (warmup discarded). Metric: sender \\texttt{file-published} to receiver first \\texttt{inbound-stored} block. Last column: 95\\% CI of the mean when $n{>}1$.`
+    : report.profile === 'campaign'
+      ? `One-way convergence latency (${esc(topology)}, \\textbf{campaign profile}): encrypted payloads after \\texttt{friend-session-attached}; $n$ repeats per size (warmup discarded). Metric: sender \\texttt{file-published} to receiver first \\texttt{inbound-stored} block. Last column: 95\\% CI of the mean when $n{>}1$.`
       : `One-way convergence latency (${esc(topology)}) for friend carriage v0 after friend-session formation. Payloads are encrypted volume files; metric uses first \\texttt{inbound-stored} block when available.`;
 
 const ciCol = hasCi ? '95\\% CI (mean)' : 'mean';
@@ -430,9 +430,9 @@ const mscFigure = `% Auto-generated MSC-style collaboration diagram
 \\end{figure}
 `;
 
-/** Paths from paper.tex (pdflatex cwd = paper repo root). */
+/** Relative path used by downstream LaTeX consumers when including these tables. */
 const FIG = 'figures';
-const masterTable = `% Auto-generated figure inputs (included from paper.tex via \\input{${FIG}/benchmark-tables.tex})
+const masterTable = `% Auto-generated figure inputs (include via \\input{${FIG}/benchmark-tables.tex} from the downstream document)
 \\input{${FIG}/benchmark-phases-table.tex}
 \\input{${FIG}/benchmark-latency-table.tex}
 \\input{${FIG}/benchmark-goodput-table.tex}

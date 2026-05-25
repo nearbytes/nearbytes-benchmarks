@@ -27,7 +27,7 @@ async function loadJson(p) {
 
 const inDir = arg('--indir', '');
 const outPath = arg('--out', path.join(inDir, 'bench-campaign-report.json'));
-const topology = arg('--topology', 'localhost paper campaign');
+const topology = arg('--topology', 'localhost campaign');
 const minValidTrials = Number(
   arg('--min-valid-trials', process.env['NEARBYTES_BENCH_MIN_VALID_TRIALS'] ?? '20'),
 );
@@ -185,7 +185,7 @@ const latencyDecompositionTable = [...latencyBySize.entries()]
 const campaign = {
   generatedAt: new Date().toISOString(),
   topology,
-  profile: 'paper-campaign',
+  profile: 'campaign',
   campaignSeeds: reports.length,
   seedIds: reports.map((r) => r.seed),
   statistics: {

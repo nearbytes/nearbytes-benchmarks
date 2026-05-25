@@ -129,14 +129,8 @@ function printSummary(reportPath, title) {
 await ensureBenchmarkBuilt();
 await mkdir(paths.e2eWorkDir, { recursive: true });
 
-const paperFigures = path.join(
-  repoRoot,
-  '..',
-  '..',
-  'NEARBYTES-PAPERS',
-  'paper-nearbytes-hypercore',
-  'figures',
-);
+const figuresDir =
+  paths.reportFiguresDir ?? path.join(repoRoot, '.local/bench/figures');
 
 const latencyReport = await runPhase('latency', { NEARBYTES_BENCH_PROFILE: 'latency-only' }, latencyReportDir);
 await printSummary(latencyReport, 'Latency-only');
@@ -149,13 +143,13 @@ await new Promise((res, rej) => {
       '--report',
       latencyReport,
       '--outdir',
-      paperFigures,
+      figuresDir,
     ],
     { cwd: repoRoot, stdio: 'inherit' },
   );
   r.on('exit', (c) => (c === 0 ? res() : rej(new Error(`figures exit ${c}`))));
 });
-console.log(`LaTeX tables written to ${paperFigures}`);
+console.log(`LaTeX tables written to ${figuresDir}`);
 
 const bandwidthReport = await runPhase(
   'bandwidth',

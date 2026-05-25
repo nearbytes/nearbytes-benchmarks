@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .local/
+.yarn/
 results/
 config/e2e.local.json
 *.log

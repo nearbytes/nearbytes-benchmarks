@@ -1,5 +1,5 @@
 /**
- * Shared pgfplots builders for paper benchmark figures.
+ * Shared pgfplots builders for benchmark figures.
  */
 
 export const COLORS = {
@@ -10,7 +10,7 @@ export const COLORS = {
   p95: 'NearBytesRed',
 };
 
-export const PGF_PREAMBLE = `% Auto-generated pgfplots style (include once in paper preamble)
+export const PGF_PREAMBLE = `% Auto-generated pgfplots style (include once in the consuming LaTeX preamble)
 \\definecolor{NearBytesBlue}{RGB}{33,102,172}
 \\definecolor{NearBytesOrange}{RGB}{230,126,34}
 \\definecolor{NearBytesTeal}{RGB}{26,152,80}

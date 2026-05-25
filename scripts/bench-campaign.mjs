@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Multi-seed paper benchmark: build → run seeds (retry per slot) → aggregate → JSON + terminal.
- * Does not render LaTeX (use yarn paper:figures).
+ * Multi-seed campaign benchmark: build → run seeds (retry per slot) → aggregate → JSON + terminal.
+ * Does not render LaTeX (use `yarn report:figures`).
  *
- *   yarn bench:paper
- *   NEARBYTES_PAPER_BENCH_SMOKE=1 yarn bench:paper
+ *   yarn bench:campaign
+ *   NEARBYTES_CAMPAIGN_SMOKE=1 yarn bench:campaign
  */
 
-import { access, mkdir, rm, readdir, copyFile, symlink } from 'fs/promises';
+import { mkdir, rm, copyFile, symlink } from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -20,23 +20,23 @@ import { ensureBenchmarkBuilt } from './ensure-built.mjs';
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const SMOKE = ['1', 'true', 'yes'].includes(
-  String(process.env['NEARBYTES_PAPER_BENCH_SMOKE'] ?? '').toLowerCase(),
+  String(process.env['NEARBYTES_CAMPAIGN_SMOKE'] ?? '').toLowerCase(),
 );
 const TARGET_SEEDS = SMOKE
   ? 1
   : Math.max(1, Number(process.env['NEARBYTES_BENCH_CAMPAIGN_SEEDS'] ?? 5) || 5);
-const paperTrialsPerSeed = 5 * 5;
+const campaignTrialsPerSeed = 5 * 5;
 const smokeTrialsPerSeed = 5 * 2;
 const MIN_VALID_TRIALS = Number(
   process.env['NEARBYTES_BENCH_MIN_VALID_TRIALS'] ??
-    (SMOKE ? smokeTrialsPerSeed - 2 : paperTrialsPerSeed - 2),
+    (SMOKE ? smokeTrialsPerSeed - 2 : campaignTrialsPerSeed - 2),
 );
 const MIN_GOODPUT_STREAMS = Number(process.env['NEARBYTES_BENCH_MIN_GOODPUT_STREAMS'] ?? 2);
 const MAX_SEED_ATTEMPTS = Number(process.env['NEARBYTES_BENCH_MAX_SEED_ATTEMPTS'] ?? 3);
 
 const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-const campaignDir = path.join(repoRoot, '.local/bench/reports/e2e-paper-campaign', runId);
-const latestDir = path.join(repoRoot, '.local/bench/reports/e2e-paper-campaign', 'latest');
+const campaignDir = path.join(repoRoot, '.local/bench/reports/e2e-campaign', runId);
+const latestDir = path.join(repoRoot, '.local/bench/reports/e2e-campaign', 'latest');
 const campaignReportPath = path.join(campaignDir, 'bench-campaign-report.json');
 
 function run(cmd, args, opts = {}) {
@@ -80,7 +80,7 @@ async function runSeedAttempt(slot, attempt) {
   const env = {
     ...process.env,
     NEARBYTES_BENCH_BASE: workBase,
-    NEARBYTES_BENCH_PROFILE: 'paper',
+    NEARBYTES_BENCH_PROFILE: 'campaign',
     NEARBYTES_BENCH_SKIP_FIGURES: '1',
     NEARBYTES_BENCH_DISCOVERY_MS: '2000',
     NEARBYTES_BENCH_GRACE_MS: '3000',
@@ -99,11 +99,11 @@ async function runSeedAttempt(slot, attempt) {
 
   console.log(`\n── seed slot ${slot} attempt ${attempt}/${MAX_SEED_ATTEMPTS} ──\n`);
 
-  await run('node', ['tests/e2e/lib/run-paper-seed.mjs'], {
+  await run('node', ['tests/e2e/lib/run-campaign-seed.mjs'], {
     env: {
       ...env,
-      NEARBYTES_PAPER_SEED_DIR: seedDir,
-      NEARBYTES_PAPER_WORK_BASE: workBase,
+      NEARBYTES_CAMPAIGN_SEED_DIR: seedDir,
+      NEARBYTES_CAMPAIGN_WORK_BASE: workBase,
     },
   });
 
@@ -123,15 +123,15 @@ async function publishLatest(reportPath) {
   try {
     await symlink(campaignDir, path.join(latestDir, 'run'), 'dir');
   } catch (err) {
-    console.warn('[bench:paper] latest symlink:', err.message);
+    console.warn('[bench:campaign] latest symlink:', err.message);
   }
 }
 
 async function main() {
   console.log(
     SMOKE
-      ? 'bench:paper (SMOKE — 1 seed, 2 stream sizes)'
-      : `bench:paper (${TARGET_SEEDS} seeds, paper profile)`,
+      ? 'bench:campaign (SMOKE — 1 seed, 2 stream sizes)'
+      : `bench:campaign (${TARGET_SEEDS} seeds, campaign profile)`,
   );
 
   await ensureBenchmarkBuilt();
@@ -171,7 +171,7 @@ async function main() {
     '--out',
     campaignReportPath,
     '--topology',
-    `localhost paper campaign (${accepted.length}/${TARGET_SEEDS} seeds accepted)`,
+    `localhost campaign (${accepted.length}/${TARGET_SEEDS} seeds accepted)`,
     '--min-valid-trials',
     String(MIN_VALID_TRIALS),
   ]);
@@ -180,14 +180,14 @@ async function main() {
 
   const summary = await readBenchReport(campaignReportPath);
   printBenchReport(summary, {
-    title: `bench:paper complete (${accepted.length}/${TARGET_SEEDS} seeds)`,
+    title: `bench:campaign complete (${accepted.length}/${TARGET_SEEDS} seeds)`,
     reportPath: campaignReportPath,
   });
   console.log(`  latest:  ${path.join(latestDir, 'bench-campaign-report.json')}`);
-  console.log(`  figures: yarn paper:figures\n`);
+  console.log(`  figures: yarn report:figures\n`);
 }
 
 main().catch((err) => {
-  console.error(`\nbench:paper failed: ${err.message}\n`);
+  console.error(`\nbench:campaign failed: ${err.message}\n`);
   process.exit(1);
 });

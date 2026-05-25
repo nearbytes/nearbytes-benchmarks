@@ -43,7 +43,7 @@ if (!senderPath || !receiverPath) {
 const sender = await loadJson(senderPath);
 const receiver = await loadJson(receiverPath);
 const trialAckTimeoutMs = Number(process.env['NEARBYTES_BENCH_TRIAL_ACK_MS'] ?? 0) || 0;
-const coordinatedTrials = sender.meta?.mode === 'paper';
+const coordinatedTrials = sender.meta?.mode === 'campaign';
 const manifest = (manifestPath ? await loadJson(manifestPath) : []).filter(
   (t) => !isWarmupTrialName(t.name),
 );

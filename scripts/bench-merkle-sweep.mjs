@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Sweep over block size × leaf size × parallelism for computeMerkleHash, and
- * compare against single-thread SHA-256. Produces a JSON+TSV report that the
- * paper can include directly as Appendix table data.
+ * compare against single-thread SHA-256. Produces a JSON+TSV report suitable
+ * for downstream consumers (e.g. LaTeX table generation).
  *
  * Usage:
  *   node scripts/bench-merkle-sweep.mjs [outDir]

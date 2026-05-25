@@ -34,7 +34,7 @@ function spawnBench(role, base, outPath) {
     ...process.env,
     NEARBYTES_SYNC_DISCOVERY: 'mdns',
     NEARBYTES_BENCH_BASE: base,
-    NEARBYTES_BENCH_PROFILE: 'paper',
+    NEARBYTES_BENCH_PROFILE: 'campaign',
     NEARBYTES_BENCH_LATENCY_REPEATS: '0',
     NEARBYTES_BENCH_LATENCY_WARMUP: '0',
     NEARBYTES_BENCH_STREAM_SIZES: String(SIZE),
@@ -63,13 +63,13 @@ function parseActivity(p) {
 async function once(i) {
   const base = join(ROOT, '.local', `loop-${i}`);
   rmSync(base, { recursive: true, force: true });
-  mkdirSync(join(base, 'paper'), { recursive: true });
+  mkdirSync(join(base, 'campaign'), { recursive: true });
   await killStale();
-  const bobOut = join(base, 'paper/bob/benchmark-result.json');
-  const aliceOut = join(base, 'paper/alice/benchmark-result.json');
-  const bob = spawnBench('receiver', join(base, 'paper'), bobOut);
+  const bobOut = join(base, 'campaign/bob/benchmark-result.json');
+  const aliceOut = join(base, 'campaign/alice/benchmark-result.json');
+  const bob = spawnBench('receiver', join(base, 'campaign'), bobOut);
   await new Promise((r) => setTimeout(r, 600));
-  const alice = spawnBench('sender', join(base, 'paper'), aliceOut);
+  const alice = spawnBench('sender', join(base, 'campaign'), aliceOut);
 
   const deadline = Date.now() + RUN_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -91,8 +91,8 @@ async function once(i) {
   try { alice.child.kill(); } catch {}
   await new Promise((r) => setTimeout(r, 200));
 
-  const aliceEv = parseActivity(join(base, 'paper/alice/data/sync/activity.log'));
-  const bobEv = parseActivity(join(base, 'paper/bob/data/sync/activity.log'));
+  const aliceEv = parseActivity(join(base, 'campaign/alice/data/sync/activity.log'));
+  const bobEv = parseActivity(join(base, 'campaign/bob/data/sync/activity.log'));
   const send = aliceEv.find((e) => e.bench === 'bulk-send-phases' && (e.bytes ?? 0) >= SIZE * 0.95);
   const recv = bobEv.find((e) => e.bench === 'bulk-recv-phases' && (e.bytes ?? 0) >= SIZE * 0.95);
   const pub = [...aliceEv].reverse().find((e) => e.bench === 'file-published' && (e.sizeBytes ?? 0) >= SIZE * 0.95);

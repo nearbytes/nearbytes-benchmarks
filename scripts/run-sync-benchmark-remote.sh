@@ -255,12 +255,12 @@ node "$ROOT/scripts/merge-benchmark-results.mjs" \
   --receiver "$RECEIVER_JSON" \
   --out "$OUT_DIR/bench-report.json" | stream_lines '[merge]'
 
-PAPER_FIG="${NEARBYTES_PAPER_FIGURES:-$ROOT/../../NEARBYTES-PAPERS/paper-nearbytes-hypercore/figures}"
+FIG_DIR="${NEARBYTES_REPORT_FIGURES_DIR:-$ROOT/.local/bench/figures}"
 if [[ "${NEARBYTES_BENCH_SKIP_FIGURES:-}" != "1" ]]; then
   heartbeat "render LaTeX figures"
   node "$ROOT/scripts/render-benchmark-figures.mjs" \
     --report "$OUT_DIR/bench-report.json" \
-    --outdir "$PAPER_FIG" || heartbeat "figure render skipped (non-fatal)"
+    --outdir "$FIG_DIR" || heartbeat "figure render skipped (non-fatal)"
 fi
 
 progress "Done"

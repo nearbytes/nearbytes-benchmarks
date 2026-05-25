@@ -47,7 +47,9 @@ export async function getBenchPaths() {
       process.env['NEARBYTES_BENCH_OUTDIR'] ?? cfg.benchReportsDir,
     ),
     e2eWorkDir: resolveRepoPath(process.env['NEARBYTES_E2E_WORK'] ?? cfg.e2eWorkDir),
-    paperFiguresDir: resolveRepoPath(cfg.paperFiguresDir),
+    reportFiguresDir: resolveRepoPath(
+      process.env['NEARBYTES_REPORT_FIGURES_DIR'] ?? cfg.reportFiguresDir,
+    ),
     sshConnectTimeoutSec: Number(
       process.env['NEARBYTES_SSH_CONNECT_TIMEOUT'] ?? cfg.sshConnectTimeoutSec ?? 10,
     ),

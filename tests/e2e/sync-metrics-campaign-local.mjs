@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Single-seed paper profile: warmup, latency sweep, stream goodput → JSON + terminal.
- * LaTeX: yarn paper:figures --report <path>
+ * Single-seed campaign profile: warmup, latency sweep, stream goodput → JSON + terminal.
+ * Render LaTeX with `yarn report:figures --report <path>`.
  *
- *   yarn e2e:paper:local
+ *   yarn e2e:campaign:local
  */
 
-import { mkdir, rm, access } from 'fs/promises';
+import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 import { getBenchPaths, getRepoRoot } from './lib/config.mjs';
@@ -18,16 +18,16 @@ import { ensureBenchmarkBuilt } from '../../scripts/ensure-built.mjs';
 const repoRoot = getRepoRoot();
 const paths = await getBenchPaths();
 const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-const runBase = path.join(paths.e2eWorkDir, runId, 'paper');
-const reportDir = path.join(paths.benchReportsDir, 'e2e-paper-local');
+const runBase = path.join(paths.e2eWorkDir, runId, 'campaign');
+const reportDir = path.join(paths.benchReportsDir, 'e2e-campaign-local');
 const reportPath = path.join(reportDir, 'bench-report.json');
 
 await ensureBenchmarkBuilt();
 await rm(runBase, { recursive: true, force: true });
 await mkdir(runBase, { recursive: true });
 
-/** Paper profile defaults; do not inherit ad-hoc stream/latency overrides from the shell. */
-function paperBenchEnv(extra) {
+/** Campaign profile defaults; do not inherit ad-hoc stream/latency overrides from the shell. */
+function campaignBenchEnv(extra) {
   const env = { ...process.env, ...extra };
   for (const key of [
     'NEARBYTES_BENCH_STREAM_SIZES',
@@ -42,9 +42,9 @@ function paperBenchEnv(extra) {
   return env;
 }
 
-const common = paperBenchEnv({
+const common = campaignBenchEnv({
   NEARBYTES_BENCH_BASE: runBase,
-  NEARBYTES_BENCH_PROFILE: 'paper',
+  NEARBYTES_BENCH_PROFILE: 'campaign',
   NEARBYTES_BENCH_SKIP_FIGURES: '1',
   NEARBYTES_BENCH_DISCOVERY_MS: '2000',
   NEARBYTES_BENCH_GRACE_MS: '3000',
@@ -55,7 +55,7 @@ const common = paperBenchEnv({
   NEARBYTES_BENCH_SWARM_TIMEOUT_MS: '0',
 });
 
-console.log(`\n═══ paper profile (workdir ${runBase}) ═══\n`);
+console.log(`\n═══ campaign profile (workdir ${runBase}) ═══\n`);
 
 const spawnOpts = { env: 'replace' };
 const bob = spawnBench(
@@ -95,7 +95,7 @@ await new Promise((res, rej) => {
       '--out',
       reportPath,
       '--topology',
-      'localhost paper profile (alice sender, bob receiver)',
+      'localhost campaign profile (alice sender, bob receiver)',
     ],
     { cwd: repoRoot, stdio: 'inherit' },
   );
@@ -104,7 +104,7 @@ await new Promise((res, rej) => {
 
 const report = await readBenchReport(reportPath);
 printBenchReport(report, {
-  title: 'e2e:paper:local complete',
+  title: 'e2e:campaign:local complete',
   reportPath,
 });
-console.log(`  figures: yarn paper:figures --report ${reportPath}\n`);
+console.log(`  figures: yarn report:figures --report ${reportPath}\n`);

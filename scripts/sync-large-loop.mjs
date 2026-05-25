@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stress large-stream sync until 3× paper goodput (1 / 32 / 128 MiB) passes.
+ * Stress large-stream sync until 3× campaign goodput (1 / 32 / 128 MiB) passes.
  *   node scripts/sync-large-loop.mjs
  *   node scripts/sync-large-loop.mjs --max-attempts 20
  */
@@ -19,7 +19,7 @@ const maxAttempts = Number(process.argv.includes('--max-attempts')
 
 const env = {
   ...process.env,
-  NEARBYTES_BENCH_PROFILE: 'paper',
+  NEARBYTES_BENCH_PROFILE: 'campaign',
   NEARBYTES_BENCH_LATENCY_REPEATS: '1',
   NEARBYTES_BENCH_LATENCY_WARMUP: '0',
   NEARBYTES_BENCH_STREAM_SIZES: '1048576,33554432,134217728',
@@ -37,7 +37,7 @@ async function runOnce(attempt) {
   await rm(work, { recursive: true, force: true });
   await mkdir(work, { recursive: true });
 
-  const runBase = path.join(work, 'paper');
+  const runBase = path.join(work, 'campaign');
   const bob = spawn(
     process.execPath,
     [path.join(root, 'dist/sync-benchmark.js')],
