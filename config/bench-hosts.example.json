@@ -1,0 +1,36 @@
+{
+  "_comment": "Copy to bench-hosts.local.json and edit. Local is required; lan/wan blocks are optional and skipped if absent.",
+  "local": {
+    "label": "<this machine's nickname>",
+    "ssh": null
+  },
+  "lan": {
+    "alice": {
+      "label": "<host A nickname>",
+      "ssh": "<host A SSH alias>",
+      "ip": "<host A IPv4 on the LAN>",
+      "workdir": "<absolute path on host A for the bench workspace>"
+    },
+    "bob": {
+      "label": "<host B nickname>",
+      "ssh": "<host B SSH alias>",
+      "ip": "<host B IPv4 on the LAN>",
+      "workdir": "<absolute path on host B for the bench workspace>"
+    }
+  },
+  "wan": {
+    "_comment": "WAN is simulated inside two Docker containers on one host (Docker NET_ADMIN required). Both peers run on this single host; netem shapes the inter-container bridge.",
+    "host": {
+      "label": "<host nickname>",
+      "ssh": "<host SSH alias>",
+      "workdir": "<absolute path on the host for the WAN workspace>"
+    },
+    "netem": {
+      "delayMs": 50,
+      "jitterMs": 2,
+      "rate": "100mbit",
+      "loss": "0.01%"
+    },
+    "image": "nearbytes-bench:wan"
+  }
+}
