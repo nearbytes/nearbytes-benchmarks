@@ -90,7 +90,8 @@ async function setupConfig(role: Role): Promise<{ config: NearbytesConfig; confi
     dataDir,
     volumes: [],
     friends,
-    profileSecret,
+    profiles: [{ name: role, secret: profileSecret }],
+    activeProfile: role,
   };
 
   process.env['NEARBYTES_CONFIG'] = configPath;

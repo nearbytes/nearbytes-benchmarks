@@ -111,11 +111,13 @@ export async function setupBenchConfig(role: BenchRole): Promise<{
   await mkdir(workDir, { recursive: true });
   await mkdir(dataDir, { recursive: true });
 
+  const profileName = role === 'sender' ? 'alice' : 'bob';
   const config: NearbytesConfig = {
     dataDir,
     volumes: [],
     friends,
-    profileSecret,
+    profiles: [{ name: profileName, secret: profileSecret }],
+    activeProfile: profileName,
   };
   process.env['NEARBYTES_CONFIG'] = configPath;
   process.env['NEARBYTES_STORAGE_DIR'] = dataDir;
@@ -128,11 +130,15 @@ export async function publishProfile(
   displayName: string,
   bio: string,
 ): Promise<{ publicKey: string; eventHash: string; publishMs: number }> {
-  if (!ctx.config.profileSecret) {
-    throw new Error('profile secret required');
+  if (ctx.config.profiles.length === 0 || ctx.config.activeProfile === null) {
+    throw new Error('active profile required');
+  }
+  const active = ctx.config.profiles.find((p) => p.name === ctx.config.activeProfile);
+  if (!active) {
+    throw new Error(`active profile "${ctx.config.activeProfile}" missing from profiles[]`);
   }
   const t0 = hrtimeMs();
-  const keyPair = await ctx.skeleton.crypto.deriveKeys(createSecret(ctx.config.profileSecret));
+  const keyPair = await ctx.skeleton.crypto.deriveKeys(createSecret(active.secret));
   const publicKey = bytesToHex(keyPair.publicKey);
   const record = await createIdentityRecord(
     ctx.skeleton.crypto,

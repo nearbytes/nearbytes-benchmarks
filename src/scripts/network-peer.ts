@@ -117,7 +117,13 @@ async function setupConfig(role: Role): Promise<{ config: NearbytesConfig; confi
   await mkdir(dataDir, { recursive: true });
   const profileSecret = role === 'alice' ? TEST_CREDENTIALS.profileAlice : TEST_CREDENTIALS.profileBob;
   const friends = role === 'alice' ? [bobPk] : [alicePk];
-  const config: NearbytesConfig = { dataDir, volumes: [], friends, profileSecret };
+  const config: NearbytesConfig = {
+    dataDir,
+    volumes: [],
+    friends,
+    profiles: [{ name: role, secret: profileSecret }],
+    activeProfile: role,
+  };
   process.env['NEARBYTES_CONFIG'] = configPath;
   process.env['NEARBYTES_STORAGE_DIR'] = dataDir;
   await writeConfig(config, configPath);
