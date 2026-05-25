@@ -159,35 +159,37 @@ export async function remoteScp(files, sshAlias, remoteDir, { master = null } = 
 /* ─────────────────────── lan/wan: rsync ──────────────────────────────── */
 
 /**
- * rsync over ssh. We disable compression (-z) and force whole-file (-W)
- * so we measure the wire + checksum overhead without the algorithm's
- * delta-encoding kicking in. This makes results comparable with scp
- * (which has neither feature).
- */
-/**
- * One rsync invocation per call, with all N files as sources — that's
- * rsync's natural mode: it pipelines them over one ssh transport. When
- * `master` is provided we point `-e ssh …` at the ControlMaster socket
- * so even that single ssh handshake is amortised across all runs.
+ * Rsync's *natural* mode: ONE invocation, all N files as sources, dumped
+ * into one destination directory. Rsync pipelines the files over a
+ * single ssh transport and pays its protocol startup (capability
+ * negotiation, file list, generator/sender wiring) exactly once for
+ * the whole batch. This is how rsync is meant to be used and the only
+ * apples-to-apples comparison against Nearbytes' parallel multi-file
+ * publish.
+ *
+ * Flags:
+ *   -W            whole-file (no delta encoding — we measure the wire,
+ *                  not rsync's incremental cleverness)
+ *   --inplace     write directly to the destination path
+ *
+ * Compression is off by default in rsync (you opt in with -z), so no
+ * explicit "--no-compress" is needed — and macOS' openrsync rewrite
+ * doesn't accept that flag anyway.
+ *
+ * With `master` we point `-e ssh …` at the ControlMaster socket so
+ * even the single ssh handshake is amortised across all runs.
  */
 export async function remoteRsync(files, sshAlias, remoteDir, { master = null } = {}) {
   const rsh = master
     ? master.rsyncRsh()
     : 'ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15';
   const t0 = hrMs();
-  // Stage all source paths into a deterministic destination-named directory
-  // by using rsync's per-file rename trick: copy each file to its
-  // distinct rsync-<name>.bin filename. rsync doesn't natively rename
-  // on the receiver when given multiple sources, so we issue one
-  // invocation per file but multiplex over the same ssh master.
-  for (const f of files) {
-    await runProc('rsync', [
-      '-W', '--inplace',
-      '-e', rsh,
-      f.path,
-      `${sshAlias}:${remoteDir}/rsync-${f.name}.bin`,
-    ]);
-  }
+  await runProc('rsync', [
+    '-W', '--inplace',
+    '-e', rsh,
+    ...files.map((f) => f.path),
+    `${sshAlias}:${remoteDir}/`,
+  ]);
   return { wallMs: hrMs() - t0, bytes: totalBytes(files), count: files.length };
 }
 
