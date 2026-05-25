@@ -4,8 +4,10 @@
  *
  * Drives the bidirectional `sync-benchmark.js` harness in burst-publish mode
  * so the sender pushes K independent block streams back-to-back on a single
- * association and the receiver hashes them concurrently via the
- * `HashWorkerPool` in `nearbytes-crypto`.
+ * association and the receiver hashes them concurrently through the
+ * transparent streaming-SHA-256 worker pool in `nearbytes-crypto`. The pool
+ * capacity is pinned via the `NEARBYTES_HASH_POOL_CAPACITY` env var that
+ * `nearbytes-crypto` reads on its first `acquireSha256Stream()` call.
  *
  * Usage:
  *   node scripts/bench-parallel-fetch.mjs [N=5]
@@ -13,7 +15,8 @@
  * Reads:
  *   NEARBYTES_BENCH_PFETCH_SIZES   comma-separated bytes per stream (default
  *                                  16 MiB × 8 = 128 MiB aggregate)
- *   NEARBYTES_BENCH_PFETCH_POOL    hashWorkerPoolCapacity passed to sync (1..N)
+ *   NEARBYTES_BENCH_PFETCH_POOL    NEARBYTES_HASH_POOL_CAPACITY for receiver
+ *                                  (default = availableParallelism())
  *   NEARBYTES_BENCH_PFETCH_TIMEOUT per-run timeout in ms (default 60s)
  *
  * Prints per-run timings (per-stream wire/drain/hash + aggregate wall) and
