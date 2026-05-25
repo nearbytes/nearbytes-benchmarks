@@ -19,20 +19,22 @@
     "e2e:remote": "node tests/e2e/sync-metrics-remote.mjs",
     "e2e:remote:campaign": "node tests/e2e/sync-metrics-remote.mjs --campaign",
     "bench:sync:quick": "NEARBYTES_BENCH_QUICK=1 node dist/sync-benchmark.js",
-    "bench:sync:campaign": "NEARBYTES_BENCH_PROFILE=campaign node dist/sync-benchmark.js"
+    "bench:sync:campaign": "NEARBYTES_BENCH_PROFILE=campaign node dist/sync-benchmark.js",
+    "update": "node scripts/update.mjs"
   },
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "nearbytes-crypto": "file:../nearbytes-crypto",
-    "nearbytes-files": "file:../nearbytes-files",
-    "nearbytes-log": "file:../nearbytes-log",
-    "nearbytes-skeleton": "file:../nearbytes-skeleton"
+    "nearbytes-crypto": "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695",
+    "nearbytes-files": "github:nearbytes/nearbytes-files#4141ade19817fcf516c62102d6ad799d7a588258",
+    "nearbytes-log": "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9",
+    "nearbytes-skeleton": "github:nearbytes/nearbytes-skeleton#4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "typescript": "^5.3.2"
-  }
+  },
+  "packageManager": "yarn@4.15.0"
 }

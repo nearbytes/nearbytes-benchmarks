@@ -6,3 +6,4 @@ results/
 config/e2e.local.json
 config/bench-hosts.local.json
 *.log
+.yarn/install-state.gz

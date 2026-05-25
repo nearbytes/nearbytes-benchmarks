@@ -3,10 +3,12 @@
 Performance harness for Nearbytes friend-carriage sync: Alice/Bob roles,
 profiles, multi-seed campaigns, LaTeX figure rendering.
 
-Requires sibling packages: `nearbytes-files`, `nearbytes-crypto`,
-`nearbytes-log`, `nearbytes-skeleton`, `nearbytes-sync`. Run
-`node ../nearbytes-files/scripts/update.mjs` once to clone + build them
-all (subsequent updates: `yarn update` from `nearbytes-files`), then:
+Internal Nearbytes deps (`nearbytes-crypto`, `nearbytes-log`,
+`nearbytes-skeleton`, `nearbytes-files`) are pinned in `package.json`
+as `github:nearbytes/<pkg>#<commit-sha>`. Plain `yarn install` (Yarn
+4.15 via Corepack) resolves each pinned commit and packs it via its
+own `prepack: tsc` — no sibling checkouts required. To refresh the
+pinned SHAs to current `main` HEADs, run `yarn update`.
 
 ```sh
 yarn install && yarn build

@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 10
   cacheKey: 10c0
 
 "@hyperswarm/secret-stream@npm:^6.6.2":
@@ -508,13 +508,68 @@ __metadata:
   resolution: "nearbytes-benchmarks@workspace:."
   dependencies:
     "@types/node": "npm:^20.10.0"
-    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#main"
-    nearbytes-files: "github:nearbytes/nearbytes-files#main"
-    nearbytes-log: "github:nearbytes/nearbytes-log#main"
-    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#main"
+    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
+    nearbytes-files: "github:nearbytes/nearbytes-files#4141ade19817fcf516c62102d6ad799d7a588258"
+    nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
+    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb"
     typescript: "npm:^5.3.2"
   languageName: unknown
   linkType: soft
+
+"nearbytes-crypto@github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695":
+  version: 0.1.0
+  resolution: "nearbytes-crypto@https://github.com/nearbytes/nearbytes-crypto.git#commit=b63d261fb470e135b20a7c2f5f85691ffa52d695"
+  dependencies:
+    "@noble/curves": "npm:^1.9.7"
+  checksum: 10c0/8d3b01cf6ace6e337b6ef1559ec10daec66a164411b6d782352c0ebd90ba3dbaf37a5417784d6c75711a292b88fdb0aa7e82eca945a79218b303e68b5218401a
+  languageName: node
+  linkType: hard
+
+"nearbytes-files@github:nearbytes/nearbytes-files#4141ade19817fcf516c62102d6ad799d7a588258":
+  version: 0.1.0
+  resolution: "nearbytes-files@https://github.com/nearbytes/nearbytes-files.git#commit=4141ade19817fcf516c62102d6ad799d7a588258"
+  dependencies:
+    commander: "npm:^12.0.0"
+    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
+    nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
+    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb"
+  bin:
+    nbf: dist/cli/index.js
+  checksum: 10c0/4408e522e9a0ac87e9bb4d821ce0902c41d81b745d9fcb0b4615d952e3aaa6cf7877d89a58ee7d694840e56c48d242c730b7ec93a35ecb71c8e79231286a912a
+  languageName: node
+  linkType: hard
+
+"nearbytes-log@github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9":
+  version: 0.1.0
+  resolution: "nearbytes-log@https://github.com/nearbytes/nearbytes-log.git#commit=10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
+  dependencies:
+    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
+  checksum: 10c0/ca079210a5b3b2f6e0f19d8f789a03107e88bd74fc95b485b6fa288736726d21fdd27e00f5d54f00aa17a30fc40f238cc3ce5d7add075a173434e71115d02ca2
+  languageName: node
+  linkType: hard
+
+"nearbytes-skeleton@github:nearbytes/nearbytes-skeleton#4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb":
+  version: 0.1.0
+  resolution: "nearbytes-skeleton@https://github.com/nearbytes/nearbytes-skeleton.git#commit=4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb"
+  dependencies:
+    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
+    nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
+    nearbytes-sync: "github:nearbytes/nearbytes-sync#89569f1b52c1e557c414533322351a15ce8bdbfe"
+  checksum: 10c0/073b4bfd6e943dd3086a45f99a5297e94d03360594218e0b67d7902dc52da12b93e3f8fc4c619b7e79ac60771b9f110bca3fe2e6522f6cc21fc8c4a05aea87e6
+  languageName: node
+  linkType: hard
+
+"nearbytes-sync@github:nearbytes/nearbytes-sync#89569f1b52c1e557c414533322351a15ce8bdbfe":
+  version: 0.1.0
+  resolution: "nearbytes-sync@https://github.com/nearbytes/nearbytes-sync.git#commit=89569f1b52c1e557c414533322351a15ce8bdbfe"
+  dependencies:
+    bonjour-service: "npm:^1.2.1"
+    hyperswarm: "npm:^4.8.2"
+    nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
+    nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
+  checksum: 10c0/6db6bf0b5205e24b7c7df844d78a43eeba091b87cfbcf4a60689f45a1f74af1892958be70226ffaf53c3ebecaa830e4c5ba8d3289faf2a07bc3b13da3e530e47
+  languageName: node
+  linkType: hard
 
 "noise-curve-ed@npm:^2.0.0, noise-curve-ed@npm:^2.0.1":
   version: 2.1.0
