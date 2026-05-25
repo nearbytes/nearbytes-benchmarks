@@ -40,8 +40,8 @@ export function requireLan(hosts) {
 }
 
 export function requireWan(hosts) {
-  if (!hosts.wan || !hosts.wan.host) {
-    throw new Error('hosts.wan.host required for WAN category');
+  if (!hosts.wan || !hosts.wan.alice || !hosts.wan.bob) {
+    throw new Error('hosts.wan.{alice,bob} required for WAN category');
   }
   return hosts.wan;
 }

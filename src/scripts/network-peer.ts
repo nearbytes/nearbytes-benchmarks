@@ -278,7 +278,7 @@ async function doExpect(
 }
 
 process.on('uncaughtException', (err) => {
-  diag(`UNCAUGHT: ${String(err)}`);
+  diag(`UNCAUGHT: ${err instanceof Error ? err.stack : String(err)}`);
   process.exit(2);
 });
 process.on('unhandledRejection', (err) => {

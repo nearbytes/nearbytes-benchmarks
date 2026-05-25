@@ -94,7 +94,7 @@ class PeerHandle {
   }
 }
 
-function spawnPeer(role, peerBase, { discovery = 'mdns' } = {}) {
+function spawnPeer(role, peerBase, { discovery = 'mdns', friendMs = 15000 } = {}) {
   if (!existsSync(PEER_BIN)) {
     throw new Error(`${PEER_BIN} missing — run "yarn build" first.`);
   }
@@ -103,7 +103,7 @@ function spawnPeer(role, peerBase, { discovery = 'mdns' } = {}) {
     NEARBYTES_PEER_ROLE: role,
     NEARBYTES_PEER_BASE: peerBase,
     NEARBYTES_SYNC_DISCOVERY: discovery,
-    NEARBYTES_PEER_FRIEND_MS: '15000',
+    NEARBYTES_PEER_FRIEND_MS: String(friendMs),
   };
   const child = spawn(process.execPath, [PEER_BIN], {
     cwd: REPO_ROOT,
@@ -214,6 +214,29 @@ export class NearbytesPair {
     return Object.assign(new NearbytesPair(alice, bob, null), {
       friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
       hosts: { alice: aliceHost, bob: bobHost },
+    });
+  }
+
+  /**
+   * Hybrid pair: alice runs locally on this Mac, bob runs remotely over
+   * SSH. The data path goes over the actual WAN between the two — no
+   * netem, no Docker, no simulation. Discovery defaults to "all" so the
+   * pair finds each other via hyperswarm DHT (mDNS multicast doesn't
+   * cross internet routers).
+   */
+  static async startHybrid(aliceBase, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 120000 } = {}) {
+    await rm(aliceBase, { recursive: true, force: true });
+    await mkdir(aliceBase, { recursive: true });
+    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs });
+    await new Promise((r) => setTimeout(r, 500));
+    const alice = spawnPeer('alice', aliceBase, { discovery, friendMs });
+    const [aliceReady, bobReady] = await Promise.all([
+      withTimeout(alice.ready(), readyTimeoutMs, `alice (local) ready`),
+      withTimeout(bob.ready(), readyTimeoutMs, `bob@${bobHost.ssh} ready`),
+    ]);
+    return Object.assign(new NearbytesPair(alice, bob, aliceBase), {
+      friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
+      hosts: { alice: null, bob: bobHost },
     });
   }
 

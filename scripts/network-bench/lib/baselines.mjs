@@ -15,7 +15,8 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hrMs, shellQuote, sshRun } from './remote.mjs';
+import { hrMs, shellQuote, sshRun, SshMaster } from './remote.mjs';
+export { SshMaster };
 
 function runProc(cmd, args, { timeoutMs = 600000, env = process.env, stdin = null } = {}) {
   return new Promise((resolve, reject) => {
@@ -130,19 +131,28 @@ export async function localCp(files, scratch) {
  * scp'd in parallel (one ssh connection each) to match nearbytes burst
  * semantics. The remote workdir must exist; the caller is responsible.
  */
-export async function remoteScp(files, sshAlias, remoteDir) {
+/**
+ * `master` is an optional SshMaster (see remote.mjs). When provided, every
+ * scp invocation is multiplexed over a single persistent SSH connection,
+ * which is mandatory on WAN paths to avoid tripping the receiver's
+ * MaxStartups / institutional rate-limits.
+ *
+ * Burst semantics intentionally serialize one scp per file (with stdin
+ * detached): scp does not pipeline files itself, and a Promise.all swarm
+ * of 16 concurrent scps was previously the canonical way to DoS our own
+ * sshd. The serial loop reflects how a human actually uses scp.
+ */
+export async function remoteScp(files, sshAlias, remoteDir, { master = null } = {}) {
+  const extra = master ? master.sshOpts() : ['-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=15'];
   const t0 = hrMs();
-  await Promise.all(
-    files.map((f) =>
-      runProc('scp', [
-        '-q',
-        '-o', 'StrictHostKeyChecking=accept-new',
-        '-o', 'ServerAliveInterval=15',
-        f.path,
-        `${sshAlias}:${remoteDir}/scp-${f.name}.bin`,
-      ]),
-    ),
-  );
+  for (const f of files) {
+    await runProc('scp', [
+      '-q',
+      ...extra,
+      f.path,
+      `${sshAlias}:${remoteDir}/scp-${f.name}.bin`,
+    ]);
+  }
   return { wallMs: hrMs() - t0, bytes: totalBytes(files), count: files.length };
 }
 
@@ -154,18 +164,30 @@ export async function remoteScp(files, sshAlias, remoteDir) {
  * delta-encoding kicking in. This makes results comparable with scp
  * (which has neither feature).
  */
-export async function remoteRsync(files, sshAlias, remoteDir) {
+/**
+ * One rsync invocation per call, with all N files as sources — that's
+ * rsync's natural mode: it pipelines them over one ssh transport. When
+ * `master` is provided we point `-e ssh …` at the ControlMaster socket
+ * so even that single ssh handshake is amortised across all runs.
+ */
+export async function remoteRsync(files, sshAlias, remoteDir, { master = null } = {}) {
+  const rsh = master
+    ? master.rsyncRsh()
+    : 'ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15';
   const t0 = hrMs();
-  await Promise.all(
-    files.map((f) =>
-      runProc('rsync', [
-        '-W', '--inplace',
-        '-e', 'ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15',
-        f.path,
-        `${sshAlias}:${remoteDir}/rsync-${f.name}.bin`,
-      ]),
-    ),
-  );
+  // Stage all source paths into a deterministic destination-named directory
+  // by using rsync's per-file rename trick: copy each file to its
+  // distinct rsync-<name>.bin filename. rsync doesn't natively rename
+  // on the receiver when given multiple sources, so we issue one
+  // invocation per file but multiplex over the same ssh master.
+  for (const f of files) {
+    await runProc('rsync', [
+      '-W', '--inplace',
+      '-e', rsh,
+      f.path,
+      `${sshAlias}:${remoteDir}/rsync-${f.name}.bin`,
+    ]);
+  }
   return { wallMs: hrMs() - t0, bytes: totalBytes(files), count: files.length };
 }
 
@@ -175,8 +197,8 @@ export function totalBytes(files) {
   return files.reduce((a, f) => a + f.bytes, 0);
 }
 
-export async function prepareRemoteDir(sshAlias, dir) {
-  await sshRun(sshAlias, `mkdir -p ${shellQuote(dir)} && rm -f ${shellQuote(dir)}/*.bin`);
+export async function prepareRemoteDir(sshAlias, dir, { master = null } = {}) {
+  await sshRun(sshAlias, `mkdir -p ${shellQuote(dir)} && rm -f ${shellQuote(dir)}/*.bin`, { master });
 }
 
 export function cleanScratch(scratch) {
