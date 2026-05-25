@@ -9,6 +9,9 @@ Requires sibling packages: `nearbytes-files`, `nearbytes-crypto`,
 ```sh
 yarn install && yarn build
 
+# pull latest main of all internal Nearbytes deps (after someone pushed)
+yarn refresh
+
 # fast smoke (~15s)
 NEARBYTES_CAMPAIGN_SMOKE=1 yarn bench:campaign
 
