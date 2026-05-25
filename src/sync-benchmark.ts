@@ -212,6 +212,66 @@ async function runSender(
   if (profile.throughputMode === 'stream') {
     const sizes = effectiveStreamSizes(profile);
     const streams: StreamThroughputResult[] = [];
+    const burstPublish = process.env['NEARBYTES_BENCH_BURST_PUBLISH'] === 'true';
+    if (burstPublish) {
+      // K-parallel-fetch benchmark mode: publish all stream sizes concurrently
+      // so the receiver sees K block streams back-to-back on the wire and K
+      // post-wire finalizers (hash + drain + rename) overlap on K pool workers.
+      benchProgress(
+        'sender',
+        `phase 4/4 — burst publish (${sizes.length} parallel streams, no ack gates)`,
+      );
+      const phaseStartWall = Date.now();
+      await ctx.skeleton.log.sync.appendMarker(
+        `bench ${JSON.stringify({ bench: 'burst-phase-start', count: sizes.length, t: phaseStartWall })}`,
+      );
+      const publishStartMs = hrtimeMs();
+      const results = await Promise.all(
+        sizes.map(async (streamBytes, si) => {
+          const name = `bench-tp-stream-${streamBytes}-${si}.bin`;
+          const t0 = hrtimeMs();
+          const wall0 = Date.now();
+          await ctx.fileService.addFile(
+            BENCH_CREDENTIALS.volume,
+            name,
+            makePayload(streamBytes, 0x5154 + si),
+          );
+          const wall1 = Date.now();
+          const t1 = hrtimeMs();
+          await ctx.skeleton.log.sync.appendMarker(
+            `bench ${JSON.stringify({ bench: 'file-published', name, sizeBytes: streamBytes, t: wall1 })}`,
+          );
+          return {
+            streamIndex: si,
+            sizeBytes: streamBytes,
+            name,
+            publishWallMs: wall0,
+            publishCpuMs: t1 - t0,
+            publishWallCpuMs: wall1 - wall0,
+          } as StreamThroughputResult;
+        }),
+      );
+      const publishEndMs = hrtimeMs();
+      const phaseEndWall = Date.now();
+      await ctx.skeleton.log.sync.appendMarker(
+        `bench ${JSON.stringify({ bench: 'burst-phase-end', count: sizes.length, t: phaseEndWall })}`,
+      );
+      streams.push(...results);
+      benchProgress(
+        'sender',
+        `burst published ${sizes.length} streams in ${(publishEndMs - publishStartMs).toFixed(0)}ms cpu`,
+      );
+      await ctx.fileService.addFile(
+        BENCH_CREDENTIALS.volume,
+        'bench-phase-throughput-complete.txt',
+        Buffer.from('throughput phase complete\n'),
+      );
+      return {
+        latency,
+        throughput: { mode: 'stream', streams },
+        trials,
+      };
+    }
     benchProgress('sender', `phase 4/4 — goodput sweep (${sizes.length} stream sizes)`);
     for (let si = 0; si < sizes.length; si++) {
       const streamBytes = sizes[si]!;
@@ -478,6 +538,114 @@ async function runReceiver(
       ? [...effectiveStreamSizes(profile)]
       : [];
   const streams: StreamThroughputResult[] = [];
+  const burstReceive = process.env['NEARBYTES_BENCH_BURST_PUBLISH'] === 'true';
+
+  if (profile.throughputMode === 'stream' && burstReceive) {
+    // K-parallel-fetch path: wait for every burst-published stream to land
+    // on disk, then aggregate bulk-recv-phases markers per stream. The
+    // sender publishes in parallel and the receiver hashes K blocks
+    // concurrently via the hashWorkerPool, so we measure aggregate
+    // wall-clock from first byte to last rename across all K streams.
+    benchProgress(
+      'receiver',
+      `phase 4/4 — burst receive (${streamSizes.length} parallel streams)`,
+    );
+    const burstStartedAt = Date.now();
+    await waitForBenchEvent(
+      ctx.skeleton.log,
+      'burst-phase-start',
+      burstStartedAt - 60_000,
+      profile.throughputReceiveTimeoutMs,
+    );
+    const wantedNames = streamSizes.map(
+      (b, si) => `bench-tp-stream-${b}-${si}.bin`,
+    );
+    const remaining = new Set(wantedNames);
+    const recvAt = new Map<string, number>();
+    const deadline =
+      profile.throughputReceiveTimeoutMs > 0
+        ? Date.now() + profile.throughputReceiveTimeoutMs
+        : null;
+    while (remaining.size > 0) {
+      await openAndWatch(ctx, BENCH_CREDENTIALS.volume, true);
+      const names = await listBenchFilenames(ctx);
+      for (const n of names) {
+        if (remaining.has(n) && !recvAt.has(n)) {
+          recvAt.set(n, Date.now());
+          remaining.delete(n);
+        }
+      }
+      if (deadline != null && Date.now() >= deadline) {
+        throw new Error(
+          `burst receive timed out: ${recvAt.size}/${wantedNames.length} arrived`,
+        );
+      }
+      if (remaining.size > 0) {
+        await sleep(profile.receiverPollMs);
+      }
+    }
+    const activityLog = await readActivityRaw(ctx.config.dataDir);
+    const events = parseBenchActivityLines(activityLog);
+    const phaseEvents = events.filter((e) => e.bench === 'bulk-recv-phases');
+    const usedIdx = new Set<number>();
+    for (let si = 0; si < streamSizes.length; si++) {
+      const streamBytes = streamSizes[si]!;
+      let chosenIdx = -1;
+      for (let i = 0; i < phaseEvents.length; i++) {
+        if (usedIdx.has(i)) continue;
+        const b = phaseEvents[i]!.bytes ?? 0;
+        if (b >= streamBytes * 0.95 && b <= streamBytes * 1.05) {
+          chosenIdx = i;
+          break;
+        }
+      }
+      if (chosenIdx >= 0) {
+        usedIdx.add(chosenIdx);
+        const e = phaseEvents[chosenIdx]!;
+        const wireMs = (e.lastByteAt ?? 0) - (e.firstByteAt ?? 0);
+        const drainMs =
+          e.diskDrainDoneAt && e.lastByteAt
+            ? e.diskDrainDoneAt - e.lastByteAt
+            : 0;
+        const hashMs =
+          e.hashDoneAt && e.diskDrainDoneAt
+            ? e.hashDoneAt - e.diskDrainDoneAt
+            : 0;
+        const renameMs =
+          e.renameDoneAt && e.hashDoneAt
+            ? e.renameDoneAt - e.hashDoneAt
+            : 0;
+        streams.push({
+          streamIndex: si,
+          sizeBytes: streamBytes,
+          name: `bench-tp-stream-${streamBytes}-${si}.bin`,
+          ...(wireMs > 0
+            ? {
+                wireMbps: (streamBytes * 8) / wireMs / 1000,
+                wireDurationMs: wireMs,
+              }
+            : {}),
+          ...(drainMs > 0 ? { diskDrainDurationMs: drainMs } : {}),
+          ...(hashMs > 0 ? { hashDurationMs: hashMs } : {}),
+          ...(renameMs > 0 ? { renameDurationMs: renameMs } : {}),
+        });
+      } else {
+        streams.push({
+          streamIndex: si,
+          sizeBytes: streamBytes,
+          name: `bench-tp-stream-${streamBytes}-${si}.bin`,
+        });
+      }
+    }
+    benchProgress(
+      'receiver',
+      `burst received ${streamSizes.length} streams (${streams.filter((s) => s.wireDurationMs).length} phases matched)`,
+    );
+    return {
+      latency,
+      throughput: { mode: 'stream', streams },
+    };
+  }
 
   if (profile.throughputMode === 'stream') {
     benchProgress(
