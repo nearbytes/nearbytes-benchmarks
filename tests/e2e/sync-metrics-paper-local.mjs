@@ -26,7 +26,23 @@ await ensureBenchmarkBuilt();
 await rm(runBase, { recursive: true, force: true });
 await mkdir(runBase, { recursive: true });
 
-const common = {
+/** Paper profile defaults; do not inherit ad-hoc stream/latency overrides from the shell. */
+function paperBenchEnv(extra) {
+  const env = { ...process.env, ...extra };
+  for (const key of [
+    'NEARBYTES_BENCH_STREAM_SIZES',
+    'NEARBYTES_BENCH_STREAM_BYTES',
+    'NEARBYTES_BENCH_LATENCY_REPEATS',
+    'NEARBYTES_BENCH_LATENCY_WARMUP',
+  ]) {
+    if (!(key in extra)) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
+const common = paperBenchEnv({
   NEARBYTES_BENCH_BASE: runBase,
   NEARBYTES_BENCH_PROFILE: 'paper',
   NEARBYTES_BENCH_SKIP_FIGURES: '1',
@@ -37,21 +53,30 @@ const common = {
   NEARBYTES_BENCH_TRIAL_ACK_MS: '0',
   NEARBYTES_BENCH_SYNC_READY_MS: '0',
   NEARBYTES_BENCH_SWARM_TIMEOUT_MS: '0',
-};
+});
 
 console.log(`\n═══ paper profile (workdir ${runBase}) ═══\n`);
 
-const bob = spawnBench('bob', {
-  ...common,
-  NEARBYTES_BENCH_ROLE: 'receiver',
-  NEARBYTES_BENCH_OUT: path.join(runBase, 'bob/benchmark-result.json'),
-});
+const spawnOpts = { env: 'replace' };
+const bob = spawnBench(
+  'bob',
+  {
+    ...common,
+    NEARBYTES_BENCH_ROLE: 'receiver',
+    NEARBYTES_BENCH_OUT: path.join(runBase, 'bob/benchmark-result.json'),
+  },
+  spawnOpts,
+);
 await sleep(250);
-const alice = spawnBench('alice', {
-  ...common,
-  NEARBYTES_BENCH_ROLE: 'sender',
-  NEARBYTES_BENCH_OUT: path.join(runBase, 'alice/benchmark-result.json'),
-});
+const alice = spawnBench(
+  'alice',
+  {
+    ...common,
+    NEARBYTES_BENCH_ROLE: 'sender',
+    NEARBYTES_BENCH_OUT: path.join(runBase, 'alice/benchmark-result.json'),
+  },
+  spawnOpts,
+);
 
 await Promise.all([bob.wait(), alice.wait()]);
 

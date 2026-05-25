@@ -1,5 +1,6 @@
 node_modules/
 dist/
 .local/
+results/
 config/e2e.local.json
 *.log

@@ -21,8 +21,8 @@ export async function loadE2eConfig() {
     try {
       const raw = await readFile(p, 'utf-8');
       return { ...JSON.parse(raw), _configPath: p };
-    } catch {
-      /* try next */
+    } catch (err) {
+      console.warn(`[e2e] config not readable at ${p}:`, err.message);
     }
   }
   throw new Error(

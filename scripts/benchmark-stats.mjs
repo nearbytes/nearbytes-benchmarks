@@ -66,8 +66,8 @@ export function parseBenchActivityLines(activityLog) {
     if (!line.startsWith('bench ')) continue;
     try {
       events.push(JSON.parse(line.slice(6)));
-    } catch {
-      /* skip */
+    } catch (err) {
+      console.warn('[benchmark-stats] malformed activity line:', line.slice(0, 80), err);
     }
   }
   return events.sort((a, b) => a.t - b.t);

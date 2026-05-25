@@ -45,6 +45,7 @@ import {
   latencyRecvAckFilename,
   writeLatencyRecvAck,
   parseBenchActivityLines,
+  wireFromBulkRecvPhases,
   type BenchMarker,
   type TrialManifestEntry,
 } from './benchmark-lib.js';
@@ -60,6 +61,12 @@ interface StreamThroughputResult {
   readonly goodputMbps?: number;
   readonly inboundDurationMs?: number;
   readonly bytesReceived?: number;
+  /** Wire throughput from receiver bulk-recv-phases marker (first→last byte). */
+  readonly wireMbps?: number;
+  readonly wireDurationMs?: number;
+  readonly diskDrainDurationMs?: number;
+  readonly hashDurationMs?: number;
+  readonly renameDurationMs?: number;
 }
 
 interface LatencyResult {
@@ -488,6 +495,9 @@ async function runReceiver(
       lastBeat = Date.now();
       let legDone = false;
 
+      const minBlockBytes = minInboundBlockBytes(streamBytes);
+      let wire: ReturnType<typeof wireFromBulkRecvPhases> = null;
+
       while (!legDone) {
         await openAndWatch(ctx, BENCH_CREDENTIALS.volume, true);
         const names = await listBenchFilenames(ctx);
@@ -495,11 +505,8 @@ async function runReceiver(
           receivedAt.set(name, { wallMs: Date.now(), cpuMs: hrtimeMs() });
         }
         const activityLog = await readActivityRaw(ctx.config.dataDir);
-        const inbound = inboundStreamProgress(
-          activityLog,
-          legStart,
-          minInboundBlockBytes(streamBytes),
-        );
+        wire = wireFromBulkRecvPhases(activityLog, legStart, minBlockBytes);
+        const inbound = inboundStreamProgress(activityLog, legStart, minBlockBytes);
         const hasFile = receivedAt.has(name);
 
         if (Date.now() - lastBeat >= 5000) {
@@ -518,6 +525,10 @@ async function runReceiver(
           lastBeat = Date.now();
         }
 
+        if (wire !== null && wire.bytes >= streamBytes * 0.95) {
+          legDone = true;
+          break;
+        }
         if (inbound.bytes >= streamBytes * 0.95 || hasFile) {
           legDone = true;
         }
@@ -533,11 +544,10 @@ async function runReceiver(
       }
 
       const activityLog = await readActivityRaw(ctx.config.dataDir);
-      const inboundFinal = inboundStreamProgress(
-        activityLog,
-        legStart,
-        minInboundBlockBytes(streamBytes),
-      );
+      if (wire === null) {
+        wire = wireFromBulkRecvPhases(activityLog, legStart, minBlockBytes);
+      }
+      const inboundFinal = inboundStreamProgress(activityLog, legStart, minBlockBytes);
       const hasFileFinal = receivedAt.has(name);
       if (!legDone) {
         throw new Error(
@@ -546,6 +556,8 @@ async function runReceiver(
       }
 
       const g = goodputFromInboundMarkers(activityLog, streamBytes, [], legStart, si);
+      const wireMbps =
+        wire && wire.wireMs > 0 ? (wire.bytes * 8) / wire.wireMs / 1000 : undefined;
       streams.push({
         streamIndex: si,
         sizeBytes: streamBytes,
@@ -553,8 +565,20 @@ async function runReceiver(
         goodputMbps: g?.goodputMbps,
         inboundDurationMs: g?.durationMs,
         bytesReceived: g?.bytesReceived,
+        ...(wireMbps !== undefined ? { wireMbps } : {}),
+        ...(wire ? { wireDurationMs: wire.wireMs } : {}),
+        ...(wire ? { diskDrainDurationMs: wire.diskDrainMs } : {}),
+        ...(wire ? { hashDurationMs: wire.hashMs } : {}),
+        ...(wire ? { renameDurationMs: wire.renameMs } : {}),
       });
-      if (g !== null) {
+      if (wireMbps !== undefined && wire) {
+        const drainTail = wire.diskDrainMs > 0 ? `, drain ${wire.diskDrainMs}ms` : '';
+        const hashTail = wire.hashMs > 0 ? `, hash ${wire.hashMs}ms` : '';
+        benchProgress(
+          'receiver',
+          `stream ${si + 1} done — wire ${wireMbps.toFixed(0)} Mb/s (${wire.wireMs}ms${drainTail}${hashTail}), ${formatBenchBytes(streamBytes)}`,
+        );
+      } else if (g !== null) {
         benchProgress(
           'receiver',
           `stream ${si + 1} done — ${g.goodputMbps.toFixed(1)} Mb/s, ${formatBenchBytes(streamBytes)}`,
@@ -745,12 +769,14 @@ async function main(): Promise<void> {
     await writeFile(outPath, JSON.stringify(result, null, 2), 'utf-8');
     benchProgress(roleLabel, `done — wrote ${outPath} (total ${(hrtimeMs() - runStartMs).toFixed(0)}ms cpu)`);
 
-    if (role === 'sender' && senderLatency.trials.length > 0) {
+    if (role === 'sender') {
       const trialPath = path.join(benchWorkDir(role), 'trial-manifest.json');
       await writeFile(trialPath, JSON.stringify(senderLatency.trials, null, 2));
     }
 
-    void ctx.destroy().catch(() => {});
+    void ctx.destroy().catch((err) => {
+      console.error('[nearbytes-benchmarks] ctx.destroy failed:', err);
+    });
   } catch (err) {
     console.error(err);
     process.exit(1);
@@ -759,13 +785,11 @@ async function main(): Promise<void> {
 }
 
 process.on('uncaughtException', (err) => {
-  if (String(err).includes('ECONNRESET') || String(err).includes('connection reset')) return;
-  console.error(err);
+  console.error('[nearbytes-benchmarks] uncaughtException:', err);
   process.exit(1);
 });
 process.on('unhandledRejection', (err) => {
-  if (String(err).includes('ECONNRESET') || String(err).includes('connection reset')) return;
-  console.error(err);
+  console.error('[nearbytes-benchmarks] unhandledRejection:', err);
   process.exit(1);
 });
 

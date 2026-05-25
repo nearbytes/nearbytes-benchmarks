@@ -8,8 +8,8 @@ export function killStaleBenchProcesses() {
     execSync('pkill -f "dist/sync-benchmark.js" 2>/dev/null || true', {
       stdio: 'ignore',
     });
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn('[nearbytes-benchmarks] killStaleBenchProcesses:', err);
   }
 }
 
@@ -23,11 +23,13 @@ export function benchScriptPath() {
   return path.join(getRepoRoot(), 'dist/sync-benchmark.js');
 }
 
-export function spawnBench(role, envExtra = {}) {
+export function spawnBench(role, envExtra = {}, options = {}) {
   const root = getRepoRoot();
+  const env =
+    options.env === 'replace' ? envExtra : { ...process.env, ...envExtra };
   const child = spawn(process.execPath, [benchScriptPath()], {
     cwd: root,
-    env: { ...process.env, ...envExtra },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';

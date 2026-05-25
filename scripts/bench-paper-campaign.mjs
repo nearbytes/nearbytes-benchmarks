@@ -122,8 +122,8 @@ async function publishLatest(reportPath) {
   await copyFile(reportPath, path.join(latestDir, 'bench-campaign-report.json'));
   try {
     await symlink(campaignDir, path.join(latestDir, 'run'), 'dir');
-  } catch {
-    /* Windows or existing link */
+  } catch (err) {
+    console.warn('[bench:paper] latest symlink:', err.message);
   }
 }
 

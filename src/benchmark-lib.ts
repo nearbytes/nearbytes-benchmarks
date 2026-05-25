@@ -172,8 +172,8 @@ export async function readBenchMarkers(log: Log): Promise<BenchMarker[]> {
       };
       const { bench: event, t, ...rest } = parsed;
       out.push({ event, t, fields: rest });
-    } catch {
-      /* skip malformed */
+    } catch (err) {
+      console.warn('[nearbytes-benchmarks] malformed bench marker line:', line.slice(0, 80), err);
     }
   }
   return out;
@@ -232,6 +232,11 @@ export interface BenchActivityEvent {
   readonly bytes?: number;
   readonly name?: string;
   readonly streamIndex?: number;
+  readonly firstByteAt?: number;
+  readonly lastByteAt?: number;
+  readonly diskDrainDoneAt?: number;
+  readonly hashDoneAt?: number;
+  readonly renameDoneAt?: number;
 }
 
 export function parseBenchActivityLines(activityLog: readonly string[]): BenchActivityEvent[] {
@@ -240,8 +245,8 @@ export function parseBenchActivityLines(activityLog: readonly string[]): BenchAc
     if (!line.startsWith('bench ')) continue;
     try {
       events.push(JSON.parse(line.slice(6)) as BenchActivityEvent);
-    } catch {
-      /* skip */
+    } catch (err) {
+      console.warn('[nearbytes-benchmarks] malformed activity line:', line.slice(0, 80), err);
     }
   }
   return events.sort((a, b) => a.t - b.t);
@@ -273,6 +278,44 @@ export function formatBenchBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MiB`;
   if (n >= 1024) return `${(n / 1024).toFixed(0)} KiB`;
   return `${n} B`;
+}
+
+/** Wire throughput from receiver `bulk-recv-phases` marker (first→last byte). */
+export function wireFromBulkRecvPhases(
+  receiverLog: readonly string[],
+  sinceWallMs: number,
+  minBlockBytes: number,
+): {
+  readonly bytes: number;
+  readonly wireMs: number;
+  readonly diskDrainMs: number;
+  readonly hashMs: number;
+  readonly renameMs: number;
+  readonly markerAt: number;
+} | null {
+  const events = parseBenchActivityLines(receiverLog);
+  const candidate = events.find(
+    (e) =>
+      e.bench === 'bulk-recv-phases' &&
+      e.t >= sinceWallMs &&
+      Number(e.bytes) >= minBlockBytes &&
+      typeof e.firstByteAt === 'number' &&
+      typeof e.lastByteAt === 'number',
+  );
+  if (!candidate) return null;
+  const first = candidate.firstByteAt!;
+  const last = candidate.lastByteAt!;
+  const diskDrain = candidate.diskDrainDoneAt ?? last;
+  const hashDone = candidate.hashDoneAt ?? diskDrain;
+  const renameDone = candidate.renameDoneAt ?? hashDone;
+  return {
+    bytes: Number(candidate.bytes) || 0,
+    wireMs: Math.max(0, last - first),
+    diskDrainMs: Math.max(0, diskDrain - last),
+    hashMs: Math.max(0, hashDone - diskDrain),
+    renameMs: Math.max(0, renameDone - hashDone),
+    markerAt: candidate.t,
+  };
 }
 
 export function goodputFromInboundMarkers(

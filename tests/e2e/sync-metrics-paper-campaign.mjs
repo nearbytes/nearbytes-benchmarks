@@ -126,8 +126,8 @@ await mkdir(latestDir, { recursive: true });
 await copyFile(campaignReport, path.join(latestDir, 'bench-campaign-report.json'));
 try {
   await symlink(campaignDir, path.join(latestDir, 'run'), 'dir');
-} catch {
-  /* ok */
+} catch (err) {
+  console.warn('[e2e:paper:campaign] latest symlink:', err.message);
 }
 
 const report = await readBenchReport(campaignReport);

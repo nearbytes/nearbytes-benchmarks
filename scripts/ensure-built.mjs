@@ -17,7 +17,10 @@ async function exists(p) {
   try {
     await access(p);
     return true;
-  } catch {
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code !== 'ENOENT') {
+      console.warn(`[ensure-built] access(${p}):`, err);
+    }
     return false;
   }
 }
