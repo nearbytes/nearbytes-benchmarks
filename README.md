@@ -5,7 +5,8 @@ profiles, multi-seed campaigns, LaTeX figure rendering.
 
 Requires sibling packages: `nearbytes-files`, `nearbytes-crypto`,
 `nearbytes-log`, `nearbytes-skeleton`, `nearbytes-sync`. Run
-`../nearbytes-files/update.sh` once to clone + build them all, then:
+`node ../nearbytes-files/scripts/update.mjs` once to clone + build them
+all (subsequent updates: `yarn update` from `nearbytes-files`), then:
 
 ```sh
 yarn install && yarn build
