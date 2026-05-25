@@ -190,3 +190,90 @@ export function cleanScratch(scratch) {
 export function mkScratch() {
   return mkdtempSync(join(tmpdir(), 'nb-netbench-'));
 }
+
+/* ───────── lan/wan: alice→bob baselines (data path = LAN only) ─────── */
+
+/**
+ * Materialise a deterministic LCG payload of `bytes` at `${aliceWorkdir}/payloads/<name>`
+ * on the alice host. Cheap on Linux (writes via dd-like loop in node).
+ * Idempotent: the script `stat`s first and skips re-generation when the size matches.
+ */
+export async function ensureAlicePayload(aliceHost, name, bytes, seed) {
+  const script = `
+const fs=require('fs'); const path=require('path');
+const [dir,name,bytes,seed]=process.argv.slice(2);
+const out=path.join(dir,name);
+fs.mkdirSync(dir,{recursive:true});
+try{ const st=fs.statSync(out); if(st.size===Number(bytes)) { console.log('cached'); process.exit(0); } }catch{}
+let s=Number(seed)>>>0; const CHUNK=1<<20; const buf=Buffer.allocUnsafe(CHUNK);
+const fd=fs.openSync(out,'w');
+let written=0;
+while(written<Number(bytes)){
+  const n=Math.min(CHUNK,Number(bytes)-written);
+  for(let i=0;i<n;i+=4){ s=(s*1664525+1013904223)>>>0; buf.writeUInt32LE(s,i); }
+  fs.writeSync(fd,buf,0,n);
+  written+=n;
+}
+fs.closeSync(fd);
+console.log('made',out,written);`;
+  const dir = `${aliceHost.workdir}/payloads`;
+  await sshRun(aliceHost.ssh, `mkdir -p ${shellQuote(dir)} && ${shellQuote(aliceHost.workdir + '/.toolchain/node-v20.19.4-linux-x64/bin/node')} - ${shellQuote(dir)} ${shellQuote(name)} ${bytes} ${seed}`, {
+    stdin: script,
+    timeoutMs: 60_000,
+  });
+  return `${dir}/${name}`;
+}
+
+/**
+ * Run scp or rsync **on alice**, from alice→bob, returning the wall-clock
+ * delta as measured by Node's hrtime on alice (parsed back to JS).
+ *
+ * The Mac is only a control plane: it spawns one SSH per measurement and
+ * gets back a single integer (ns). The data path is strictly alice⇄bob LAN.
+ */
+async function alicePushTimed(aliceHost, bobHost, alicePaths, tool) {
+  const bobDir = `${bobHost.workdir}/payloads-recv`;
+  // Burst semantics reflect typical usage of each tool:
+  //   scp   → naive serial loop over individual files (one ssh per file)
+  //   rsync → a single batched invocation with all sources (rsync's
+  //           natural mode — it pipelines multiple files over one ssh)
+  // For N=1 both reduce to the standard single-file timing.
+  let body;
+  if (tool === 'scp') {
+    const lines = alicePaths.map((p, i) => {
+      const dst = `${bobHost.ssh}:${bobDir}/scp-${i}.bin`;
+      return `scp -q -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 ${shellQuote(p)} ${shellQuote(dst)} </dev/null`;
+    });
+    body = lines.join('\n');
+  } else {
+    const dst = `${bobHost.ssh}:${bobDir}/`;
+    const sources = alicePaths.map((p) => shellQuote(p)).join(' ');
+    body = `rsync -W --inplace -e ${shellQuote('ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15')} ${sources} ${shellQuote(dst)} </dev/null`;
+  }
+  // Every nested ssh/scp/rsync gets stdin from /dev/null so it doesn't
+  // swallow the rest of this script (which arrives over the outer ssh's
+  // stdin). Without this, the very first nested ssh would consume the
+  // remaining lines and `echo WALL_NS=…` at the end would never run.
+  const script = `
+set -e
+ssh -n -o StrictHostKeyChecking=accept-new ${bobHost.ssh} 'mkdir -p ${bobDir} && rm -f ${bobDir}/${tool}-*.bin' >/dev/null
+T0=$(date +%s%N)
+${body}
+T1=$(date +%s%N)
+echo "WALL_NS=$((T1-T0))"
+`;
+  const { stdout } = await sshRun(aliceHost.ssh, 'bash -s', { stdin: script, timeoutMs: 600_000 });
+  const m = stdout.match(/WALL_NS=(\d+)/);
+  if (!m) throw new Error(`could not parse WALL_NS from: ${stdout.slice(0, 300)}`);
+  return Number(m[1]) / 1e6;
+}
+
+export async function lanScp(aliceHost, bobHost, alicePaths) {
+  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'scp');
+  return { wallMs, count: alicePaths.length };
+}
+
+export async function lanRsync(aliceHost, bobHost, alicePaths) {
+  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'rsync');
+  return { wallMs, count: alicePaths.length };
+}

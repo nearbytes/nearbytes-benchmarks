@@ -28,6 +28,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { REMOTE_NODE_BIN } from './deploy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(dirname(dirname(HERE)));
@@ -93,7 +94,7 @@ class PeerHandle {
   }
 }
 
-function spawnPeer(role, peerBase) {
+function spawnPeer(role, peerBase, { discovery = 'mdns' } = {}) {
   if (!existsSync(PEER_BIN)) {
     throw new Error(`${PEER_BIN} missing — run "yarn build" first.`);
   }
@@ -101,7 +102,7 @@ function spawnPeer(role, peerBase) {
     ...process.env,
     NEARBYTES_PEER_ROLE: role,
     NEARBYTES_PEER_BASE: peerBase,
-    NEARBYTES_SYNC_DISCOVERY: 'mdns',
+    NEARBYTES_SYNC_DISCOVERY: discovery,
     NEARBYTES_PEER_FRIEND_MS: '15000',
   };
   const child = spawn(process.execPath, [PEER_BIN], {
@@ -109,7 +110,6 @@ function spawnPeer(role, peerBase) {
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  // Drain stderr to a buffer so it doesn't fill kernel pipe; surface on failure.
   let stderr = '';
   child.stderr.on('data', (c) => (stderr += c.toString()));
   child.on('exit', (code) => {
@@ -118,6 +118,57 @@ function spawnPeer(role, peerBase) {
     }
   });
   return new PeerHandle(role, child);
+}
+
+/**
+ * Spawn a network-peer.js on a remote host via SSH. The remote process
+ * runs in `${workdir}/nearbytes-benchmarks/` and reads commands from
+ * stdin / writes responses to stdout — identical wire protocol to the
+ * local spawn. SSH multiplexes both streams.
+ *
+ * Discovery defaults to "all" — `nearbytes-sync` always wires mDNS in,
+ * and `all` adds Hyperswarm DHT on top as a fallback. On the same LAN
+ * mDNS wins the race and the resulting TCP connection is direct over
+ * LAN; the DHT only kicks in if multicast is filtered (e.g. WAN, or
+ * mDNS-blocking switches).
+ */
+function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000 } = {}) {
+  const peerBase = `${host.workdir}/peer-${role}`;
+  const nbDir = `${host.workdir}/nearbytes-benchmarks`;
+  const peerBin = `${nbDir}/dist/scripts/network-peer.js`;
+  const nodeBin = REMOTE_NODE_BIN(host.workdir);
+  const remoteCmd = [
+    `mkdir -p ${shq(peerBase)} ${shq(host.workdir + '/tmp')}`,
+    `cd ${shq(nbDir)}`,
+    `exec env ` +
+      `NEARBYTES_PEER_ROLE=${role} ` +
+      `NEARBYTES_PEER_BASE=${shq(peerBase)} ` +
+      `NEARBYTES_SYNC_DISCOVERY=${discovery} ` +
+      `NEARBYTES_PEER_FRIEND_MS=${friendMs} ` +
+      `TMPDIR=${shq(host.workdir + '/tmp')} ` +
+      `${shq(nodeBin)} ${shq(peerBin)}`,
+  ].join(' && ');
+  // Pass the entire command as a SINGLE argv element. SSH joins
+  // multiple trailing args with spaces, which breaks `bash -lc 'A && B'`
+  // (the && would run in the outer shell, not the -c subshell).
+  const child = spawn('ssh', [
+    '-o', 'ServerAliveInterval=15',
+    '-o', 'ServerAliveCountMax=4',
+    host.ssh,
+    remoteCmd,
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', (c) => (stderr += c.toString()));
+  child.on('exit', (code) => {
+    if (code !== 0 && code !== null) {
+      process.stderr.write(`[${role}@${host.ssh}] exited ${code}; stderr tail:\n${stderr.slice(-600)}\n`);
+    }
+  });
+  return new PeerHandle(role, child);
+}
+
+function shq(s) {
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
 
 export class NearbytesPair {
@@ -132,7 +183,6 @@ export class NearbytesPair {
     await rm(base, { recursive: true, force: true });
     await mkdir(base, { recursive: true });
     const bob = spawnPeer('bob', base);
-    // Stagger start so bob is listening on the swarm before alice publishes.
     await new Promise((r) => setTimeout(r, 200));
     const alice = spawnPeer('alice', base);
     const [aliceReady, bobReady] = await Promise.all([
@@ -141,6 +191,29 @@ export class NearbytesPair {
     ]);
     return Object.assign(new NearbytesPair(alice, bob, base), {
       friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
+    });
+  }
+
+  /**
+   * Start alice on aliceHost and bob on bobHost over SSH. Nearbytes data
+   * flows directly between the two remotes (Mac is only a control plane:
+   * it sees JSON commands + responses, not block traffic).
+   *
+   * `discovery` defaults to "hyperswarm" so the pair works across subnets.
+   * For pure same-VLAN LAN tests, pass `discovery: "mdns"` to keep the
+   * data path strictly on the LAN with zero DHT involvement.
+   */
+  static async startRemote(aliceHost, bobHost, { discovery = 'all', readyTimeoutMs = 120000, friendMs = 90000 } = {}) {
+    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs });
+    await new Promise((r) => setTimeout(r, 500));
+    const alice = spawnRemotePeer('alice', aliceHost, { discovery, friendMs });
+    const [aliceReady, bobReady] = await Promise.all([
+      withTimeout(alice.ready(), readyTimeoutMs, `alice@${aliceHost.ssh} ready`),
+      withTimeout(bob.ready(), readyTimeoutMs, `bob@${bobHost.ssh} ready`),
+    ]);
+    return Object.assign(new NearbytesPair(alice, bob, null), {
+      friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
+      hosts: { alice: aliceHost, bob: bobHost },
     });
   }
 
