@@ -7,7 +7,6 @@
   "scripts": {
     "build": "tsc",
     "type-check": "tsc --noEmit",
-    "refresh": "yarn up --recursive 'nearbytes-*'",
     "bench:campaign": "node scripts/bench-campaign.mjs",
     "bench:sync": "node dist/sync-benchmark.js",
     "bench:sync:merge": "node scripts/merge-benchmark-results.mjs",
@@ -27,10 +26,10 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "nearbytes-crypto": "github:nearbytes/nearbytes-crypto#main",
-    "nearbytes-files": "github:nearbytes/nearbytes-files#main",
-    "nearbytes-log": "github:nearbytes/nearbytes-log#main",
-    "nearbytes-skeleton": "github:nearbytes/nearbytes-skeleton#main"
+    "nearbytes-crypto": "file:../nearbytes-crypto",
+    "nearbytes-files": "file:../nearbytes-files",
+    "nearbytes-log": "file:../nearbytes-log",
+    "nearbytes-skeleton": "file:../nearbytes-skeleton"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

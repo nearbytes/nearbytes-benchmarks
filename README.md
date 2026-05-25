@@ -4,13 +4,11 @@ Performance harness for Nearbytes friend-carriage sync: Alice/Bob roles,
 profiles, multi-seed campaigns, LaTeX figure rendering.
 
 Requires sibling packages: `nearbytes-files`, `nearbytes-crypto`,
-`nearbytes-log`, `nearbytes-skeleton`, `nearbytes-sync`.
+`nearbytes-log`, `nearbytes-skeleton`, `nearbytes-sync`. Run
+`../nearbytes-files/update.sh` once to clone + build them all, then:
 
 ```sh
 yarn install && yarn build
-
-# pull latest main of all internal Nearbytes deps (after someone pushed)
-yarn refresh
 
 # fast smoke (~15s)
 NEARBYTES_CAMPAIGN_SMOKE=1 yarn bench:campaign
