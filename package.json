@@ -28,9 +28,9 @@
   },
   "dependencies": {
     "nearbytes-crypto": "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695",
-    "nearbytes-files": "github:nearbytes/nearbytes-files#4141ade19817fcf516c62102d6ad799d7a588258",
+    "nearbytes-files": "github:nearbytes/nearbytes-files#15eff16acfb0c5c08207a4b54e9593aaba0e05f8",
     "nearbytes-log": "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9",
-    "nearbytes-skeleton": "github:nearbytes/nearbytes-skeleton#4b2215fcca4fea98e043ec7bbb25d0757e9bc0bb"
+    "nearbytes-skeleton": "github:nearbytes/nearbytes-skeleton#976df805150a1bfb97267e6ff1106851449c4326"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
