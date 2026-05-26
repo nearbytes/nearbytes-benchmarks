@@ -509,9 +509,9 @@ __metadata:
   dependencies:
     "@types/node": "npm:^20.10.0"
     nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
-    nearbytes-files: "github:nearbytes/nearbytes-files#a2816a88066a29df2ab6ab0c11debf9e8a8499d2"
+    nearbytes-files: "github:nearbytes/nearbytes-files#2704ef1d0077cc53950df3f6fe7357352e15f405"
     nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
-    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#06fd6e49b1495877f774333eb43f8ffdb5842ee1"
+    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#88c1bb60db7acb4c2d09eaa6644003538dcfe6b0"
     typescript: "npm:^5.3.2"
   languageName: unknown
   linkType: soft
@@ -525,17 +525,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nearbytes-files@github:nearbytes/nearbytes-files#a2816a88066a29df2ab6ab0c11debf9e8a8499d2":
+"nearbytes-files@github:nearbytes/nearbytes-files#2704ef1d0077cc53950df3f6fe7357352e15f405":
   version: 0.1.0
-  resolution: "nearbytes-files@https://github.com/nearbytes/nearbytes-files.git#commit=a2816a88066a29df2ab6ab0c11debf9e8a8499d2"
+  resolution: "nearbytes-files@https://github.com/nearbytes/nearbytes-files.git#commit=2704ef1d0077cc53950df3f6fe7357352e15f405"
   dependencies:
     commander: "npm:^12.0.0"
     nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
     nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
-    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#06fd6e49b1495877f774333eb43f8ffdb5842ee1"
+    nearbytes-skeleton: "github:nearbytes/nearbytes-skeleton#88c1bb60db7acb4c2d09eaa6644003538dcfe6b0"
   bin:
     nbf: dist/cli/index.js
-  checksum: 10c0/771168db6c7fbffa5478d685a30680068c32c93ee65764e30789a88b9cdc88a6db5f4adb72d6408cc38a0bae9b9b09c3c4453047e39b1054928dd27442249fe4
+  checksum: 10c0/5390c290021ad0a96ed51fb2a05acd2b80f679eb7ba308676a0dcfc5d49b7ec61ee4912725fa0d5b595bfc6f96e3565a4500c3128d7fba8274c45b1f4695aba5
   languageName: node
   linkType: hard
 
@@ -548,26 +548,26 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nearbytes-skeleton@github:nearbytes/nearbytes-skeleton#06fd6e49b1495877f774333eb43f8ffdb5842ee1":
+"nearbytes-skeleton@github:nearbytes/nearbytes-skeleton#88c1bb60db7acb4c2d09eaa6644003538dcfe6b0":
   version: 0.1.0
-  resolution: "nearbytes-skeleton@https://github.com/nearbytes/nearbytes-skeleton.git#commit=06fd6e49b1495877f774333eb43f8ffdb5842ee1"
+  resolution: "nearbytes-skeleton@https://github.com/nearbytes/nearbytes-skeleton.git#commit=88c1bb60db7acb4c2d09eaa6644003538dcfe6b0"
   dependencies:
     nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
     nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
-    nearbytes-sync: "github:nearbytes/nearbytes-sync#4744ed2e9597efb1dc4cf58ff6367654d4908944"
-  checksum: 10c0/456748f273697401d497e0050313b52b8bed72829c22ce0c03b7c8a0b38653d6e335f17d7c4d92b9c05bf524b527b8a661b8a87ed1df741638a3b82657bdfce1
+    nearbytes-sync: "github:nearbytes/nearbytes-sync#60cd816ca779b817c8620f8580ac6017dc44f75d"
+  checksum: 10c0/f6ff5bc8ea412acebca3ce26934891a67ab098dbf72575bd8a8c5106b33357f9fea5c9167b08a2bbe8e1cd8deb5a720fa2dca6b5050f6178720294a174d5efa2
   languageName: node
   linkType: hard
 
-"nearbytes-sync@github:nearbytes/nearbytes-sync#4744ed2e9597efb1dc4cf58ff6367654d4908944":
+"nearbytes-sync@github:nearbytes/nearbytes-sync#60cd816ca779b817c8620f8580ac6017dc44f75d":
   version: 0.1.0
-  resolution: "nearbytes-sync@https://github.com/nearbytes/nearbytes-sync.git#commit=4744ed2e9597efb1dc4cf58ff6367654d4908944"
+  resolution: "nearbytes-sync@https://github.com/nearbytes/nearbytes-sync.git#commit=60cd816ca779b817c8620f8580ac6017dc44f75d"
   dependencies:
     bonjour-service: "npm:^1.2.1"
     hyperswarm: "npm:^4.8.2"
     nearbytes-crypto: "github:nearbytes/nearbytes-crypto#b63d261fb470e135b20a7c2f5f85691ffa52d695"
     nearbytes-log: "github:nearbytes/nearbytes-log#10ff0f0cb8b57b0e6c7ad2e73c7e0d48205295e9"
-  checksum: 10c0/3ec3ec6cd71aca3858237fa1d44f514b9799a1f6c4f6336f84021828d2cb5abb6fee465cb935a2d8b818c614bbc6889cbd322805abc0f9feb72fd048c83842c4
+  checksum: 10c0/6ef8e16d8281a6d464356fb618edd4e7dca2ea09d380b3fc87d3e52354500718504471f3562bdb2da6efa04d88b3158b3fc6a369837cee59ca60d9ab79da33a3
   languageName: node
   linkType: hard
 
