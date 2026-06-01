@@ -1,5 +1,6 @@
 {
   "remoteHost": "pc-ciancia",
+  "remoteFilesRoot": "/home/vincenzo/data/local/repos/NEARBYTES/nearbytes-files",
   "sshConnectTimeoutSec": 10,
   "benchBaseLocal": ".local/bench/work",
   "benchBaseRemote": "/tmp/nearbytes-sync-benchmark",

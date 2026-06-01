@@ -17,6 +17,8 @@
     "e2e:campaign:local": "node tests/e2e/sync-metrics-campaign-local.mjs",
     "e2e:campaign:multi": "node tests/e2e/sync-metrics-campaign-multi.mjs",
     "e2e:local": "node tests/e2e/sync-metrics-local.mjs",
+    "e2e:propagation:local": "node tests/e2e/event-propagation-local.mjs",
+    "e2e:propagation:remote": "node tests/e2e/event-propagation-remote.mjs",
     "e2e:remote": "node tests/e2e/sync-metrics-remote.mjs",
     "e2e:remote:campaign": "node tests/e2e/sync-metrics-remote.mjs --campaign",
     "bench:sync:quick": "NEARBYTES_BENCH_QUICK=1 node dist/sync-benchmark.js",

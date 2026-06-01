@@ -35,6 +35,15 @@ export async function getRemoteHost() {
   return process.env['NEARBYTES_REMOTE_HOST'] ?? cfg.remoteHost;
 }
 
+export async function getRemoteFilesRoot() {
+  const cfg = await loadE2eConfig();
+  return (
+    process.env['NBF_PROP_REMOTE_FILES_ROOT'] ??
+    cfg.remoteFilesRoot ??
+    '/home/vincenzo/data/local/repos/NEARBYTES/nearbytes-files'
+  );
+}
+
 export async function getBenchPaths() {
   const cfg = await loadE2eConfig();
   return {
