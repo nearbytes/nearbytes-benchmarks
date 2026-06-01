@@ -46,6 +46,72 @@ function fmtMs(ms) {
 function mbps(bytes, ms) {
   return ms > 0 ? Number(((bytes * 8) / ms / 1000).toFixed(1)) : 0;
 }
+function fmtGbps(m) {
+  if (!Number.isFinite(m) || m <= 0) return '—';
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} Gb/s` : `${Math.round(m)} Mb/s`;
+}
+function decomposeNearbytesRun(m) {
+  const streams = (m.perStream ?? []).flat().filter(Boolean);
+  const publishMs = m.publishWallMs ?? 0;
+  // Single block: receiver marker. Many concurrent blocks: aggregate window.
+  const wireMs =
+    streams.length === 1
+      ? (streams[0].wireMs ?? 0)
+      : streams.length > 1
+        ? Math.max(0, m.wallMs - publishMs)
+        : 0;
+  const xferMs = Math.max(wireMs, m.wallMs - publishMs);
+  return {
+    e2eMbps: mbps(m.bytes, m.wallMs),
+    publishMbps: publishMs > 0 ? mbps(m.bytes, publishMs) : 0,
+    wireMbps: wireMs > 0 ? mbps(m.bytes, wireMs) : 0,
+    xferMbps: xferMs > 0 ? mbps(m.bytes, xferMs) : 0,
+    publishMs,
+    wireMs,
+    xferMs,
+  };
+}
+function printSummary(report) {
+  const host = report.machines?.local;
+  console.log('\n╔══════════════════════════════════════════════════════════════════════════╗');
+  console.log('║  Nearbytes network-bench — local goodput (p50, measured repeats)         ║');
+  console.log('╚══════════════════════════════════════════════════════════════════════════╝');
+  if (host) {
+    console.log(`  ${host.cpuModel} · ${host.cpuLogicalCores} cores · ${host.osName} ${host.osVersion}`);
+  }
+  console.log(
+    `  friend session (one-time): alice ${report.friendSessionMs?.alice ?? '?'} ms · bob ${report.friendSessionMs?.bob ?? '?'} ms\n`,
+  );
+  const hdr =
+    '  Class          │ nc/cp (E2E)      │ nearbytes E2E    │ publish (alice)  │ wire (bob)       │ xfer after pub';
+  console.log(hdr);
+  console.log('  ' + '─'.repeat(hdr.length - 2));
+  for (const sc of report.sizeClasses) {
+    const label = `${sc.sizeClass} (${describeSize(report.plans[sc.sizeClass])})`.padEnd(14);
+    const nc = sc.systems.nc?.goodputMbps?.p50;
+    const cp = sc.systems.cp?.goodputMbps?.p50;
+    const nb = sc.systems.nearbytes;
+    const runs = nb?.runs ?? [];
+    const pub = runs.map((r) => r.publishWallMs).filter(Number.isFinite);
+    const wires = runs.map((r) => r.wireMs).filter(Number.isFinite);
+    const e2e = nb?.goodputMbps?.p50;
+    const pubP50 = quantiles(pub)?.p50;
+    const wireP50 = quantiles(wires)?.p50;
+    const xferRuns = runs.map((r) => decomposeNearbytesRun({ ...r, bytes: sc.aggregateBytes, perStream: r.perStream }));
+    const xferP50 = quantiles(xferRuns.map((d) => d.xferMbps))?.p50;
+    const pubMbpsP50 = quantiles(xferRuns.map((d) => d.publishMbps))?.p50;
+    const wireMbpsP50 = quantiles(xferRuns.map((d) => d.wireMbps))?.p50;
+    console.log(
+      `  ${label} │ nc ${fmtGbps(nc).padStart(8)} │ cp ${fmtGbps(cp).padStart(8)} │ ` +
+        `E2E ${fmtGbps(e2e).padStart(8)} │ ${fmtGbps(pubMbpsP50).padStart(8)} (${fmtMs(pubP50).padStart(5)}) │ ` +
+        `${fmtGbps(wireMbpsP50).padStart(8)} (${fmtMs(wireP50).padStart(5)}) │ ${fmtGbps(xferP50).padStart(8)}`,
+    );
+  }
+  console.log(
+    '\n  E2E = bob expect → last block stored. publish = alice addFile (encrypt+hash+journal).',
+  );
+  console.log('  wire = receiver bulk-recv first→last byte. xfer = E2E − publish (sync path).\n');
+}
 function quantiles(xs) {
   const v = [...xs].filter(Number.isFinite).sort((a, b) => a - b);
   if (v.length === 0) return null;
@@ -74,12 +140,16 @@ function buildFiles(plan, scratch, sizeClassName) {
 async function runOneNearbytes(pair, plan, burst) {
   const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
   const r = await pair.measure({ files, burst, timeoutMs: 30_000 });
+  const bytes = totalBytes(plan);
+  const deco = decomposeNearbytesRun({ wallMs: r.wallMs, bytes, perStream: r.perStream, publishWallMs: r.publishWallMs });
   return {
     wallMs: r.wallMs,
-    bytes: totalBytes(plan),
+    bytes,
     count: plan.count,
     perStream: r.perStream,
     publishWallMs: r.publishWallMs,
+    wireMs: deco.wireMs,
+    ...deco,
   };
 }
 
@@ -107,10 +177,21 @@ async function runSizeClass({ pair, sizeClass, plan, scratchBase, repeats }) {
           : sys === 'cp' ? { wallMs: (await localCp(files, scratch)).wallMs, bytes: totalBytes(plan) }
           : await runOneNearbytes(pair, plan, sizeClass === 'burst');
         if (!isWarmup) {
-          results[sys].push({ wallMs: m.wallMs, goodputMbps: mbps(m.bytes, m.wallMs) });
-          if (sys === 'nearbytes' && m.perStream) perStreamAll.push(m.perStream);
+          const row = { wallMs: m.wallMs, goodputMbps: mbps(m.bytes, m.wallMs) };
+          if (sys === 'nearbytes') {
+            row.publishWallMs = m.publishWallMs;
+            row.wireMs = m.wireMs;
+            row.e2eMbps = m.e2eMbps;
+            row.publishMbps = m.publishMbps;
+            row.wireMbps = m.wireMbps;
+            row.xferMbps = m.xferMbps;
+            row.perStream = m.perStream;
+            perStreamAll.push(m.perStream);
+          }
+          results[sys].push(row);
         }
-        line += `${sys}=${fmtMs(m.wallMs).padStart(8)} (${String(mbps(m.bytes, m.wallMs)).padStart(7)} Mb/s)  `;
+        const rate = sys === 'nearbytes' ? fmtGbps(m.e2eMbps ?? mbps(m.bytes, m.wallMs)) : fmtGbps(mbps(m.bytes, m.wallMs));
+        line += `${sys}=${fmtMs(m.wallMs).padStart(8)} (${rate.padStart(9)})  `;
       } catch (err) {
         line += `${sys}=FAIL  `;
         console.error(`    ${sys} failed: ${err.message}`);
@@ -197,7 +278,8 @@ async function main() {
 
   await mkdir(dirname(OUT_PATH), { recursive: true });
   await writeFile(OUT_PATH, JSON.stringify(report, null, 2));
-  console.log(`\nwrote ${OUT_PATH} (${report.wallSeconds}s wall)`);
+  printSummary(report);
+  console.log(`wrote ${OUT_PATH} (${report.wallSeconds}s wall)`);
   cleanScratch(scratchBase);
 }
 

@@ -29,6 +29,7 @@ import { createCryptoOperations, createSecret, bytesToHex } from 'nearbytes-cryp
 import { writeConfig, type NearbytesConfig } from 'nearbytes-skeleton';
 import type { Log } from 'nearbytes-log';
 import { createContext, openAndWatch } from 'nearbytes-files/cli/context';
+import { makePayload } from '../benchmark-lib.js';
 import { readBenchMarkers } from './test-markers.js';
 
 const TEST_CREDENTIALS = {
@@ -76,16 +77,6 @@ function envMs(key: string, fallback: number): number {
   if (raw === undefined || raw.trim() === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function payload(bytes: number, seed: number): Buffer {
-  const buf = Buffer.alloc(bytes);
-  let s = (seed + 1) >>> 0;
-  for (let i = 0; i < bytes; i++) {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    buf[i] = s & 0xff;
-  }
-  return buf;
 }
 
 async function profilePublicKey(secret: string): Promise<string> {
@@ -206,7 +197,7 @@ async function doPublish(
   cmd: PublishCommand,
 ): Promise<{ files: { name: string; bytes: number; publishMs: number }[]; totalWallMs: number }> {
   const t0 = Date.now();
-  const items = cmd.files.map((f) => ({ ...f, buf: payload(f.bytes, f.seed ?? 0) }));
+  const items = cmd.files.map((f) => ({ ...f, buf: makePayload(f.bytes, f.seed ?? 0) }));
   const per: { name: string; bytes: number; publishMs: number }[] = [];
 
   if (cmd.burst) {
