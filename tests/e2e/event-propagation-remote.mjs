@@ -24,7 +24,7 @@ const remoteHost = await getRemoteHost();
 const remoteFilesRoot = (await getRemoteFilesRoot()).replace(/^~/, '/home/vincenzo');
 const sshOpts = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${paths.sshConnectTimeoutSec}`];
 
-if (!process.env.NBF_PROP_SKIP_BUILD && !existsSync(join(FILES_ROOT, 'dist/cli/context.js'))) {
+if (!process.env.NBF_PROP_SKIP_BUILD && !existsSync(join(FILES_ROOT, 'dist/probeRuntime.js'))) {
   execSync('yarn build', { cwd: FILES_ROOT, stdio: 'inherit' });
 }
 

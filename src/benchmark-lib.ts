@@ -11,7 +11,11 @@ import {
   serializeIdentityRecord,
   verifyIdentityRecord,
 } from 'nearbytes-files/chatCodec';
-import { createContext, openAndWatch, type Context } from 'nearbytes-files/cli/context';
+import {
+  createProbeRuntime as createContext,
+  openAndWatch,
+  type ProbeRuntime as Context,
+} from 'nearbytes-files/probe-runtime';
 import { BENCH_CREDENTIALS } from './benchmark-credentials.js';
 
 export type BenchRole = 'sender' | 'receiver';

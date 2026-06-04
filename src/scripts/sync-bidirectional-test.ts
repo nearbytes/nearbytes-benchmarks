@@ -13,7 +13,7 @@ import os from 'os';
 import { createCryptoOperations, createSecret, bytesToHex, computeHash } from 'nearbytes-crypto';
 import { writeConfig, type NearbytesConfig } from 'nearbytes-skeleton';
 import type { Log } from 'nearbytes-log';
-import { createContext, openAndWatch } from 'nearbytes-files/cli/context';
+import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
 import { readBenchMarkers, type RunPhaseTiming } from './test-markers.js';
 
 /** Public test identities — do not use in production. */

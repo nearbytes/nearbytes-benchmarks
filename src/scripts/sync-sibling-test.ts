@@ -14,7 +14,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import { writeConfig, readConfig, type NearbytesConfig } from 'nearbytes-skeleton';
-import { createContext, openAndWatch } from 'nearbytes-files/cli/context';
+import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
 
 const SHARED_PROFILE_SECRET = 'nearbytes-vincenzo:sibling-shared-strong-secret';
 const VOLUME_SECRET = 'nearbytes-sibling-test:beautiful-document';

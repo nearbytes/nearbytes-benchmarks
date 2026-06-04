@@ -28,7 +28,7 @@ import { createInterface } from 'readline';
 import { createCryptoOperations, createSecret, bytesToHex } from 'nearbytes-crypto';
 import { writeConfig, type NearbytesConfig } from 'nearbytes-skeleton';
 import type { Log } from 'nearbytes-log';
-import { createContext, openAndWatch } from 'nearbytes-files/cli/context';
+import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
 import { makePayload } from '../benchmark-lib.js';
 import { readBenchMarkers } from './test-markers.js';
 
