@@ -49,7 +49,7 @@ import {
   type BenchMarker,
   type TrialManifestEntry,
 } from './benchmark-lib.js';
-import { openAndWatch } from 'nearbytes-files/probe-runtime';
+import { openAndWatch } from 'nearbytes-engine';
 
 interface StreamThroughputResult {
   readonly streamIndex: number;

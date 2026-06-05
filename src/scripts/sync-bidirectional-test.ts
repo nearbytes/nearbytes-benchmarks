@@ -13,7 +13,11 @@ import os from 'os';
 import { createCryptoOperations, createSecret, bytesToHex, computeHash } from 'nearbytes-crypto';
 import { writeConfig, type NearbytesConfig } from 'nearbytes-skeleton';
 import type { Log } from 'nearbytes-log';
-import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
+import {
+  createEngineRuntime as createContext,
+  openAndWatch,
+  attachSyncInboundRefresh,
+} from 'nearbytes-engine';
 import { readBenchMarkers, type RunPhaseTiming } from './test-markers.js';
 
 /** Public test identities — do not use in production. */
@@ -103,7 +107,7 @@ async function setupConfig(role: Role): Promise<{ config: NearbytesConfig; confi
 
 async function listFilenames(ctx: Awaited<ReturnType<typeof createContext>>): Promise<string[]> {
   const files = await ctx.fileService.listFiles(TEST_CREDENTIALS.volume);
-  return files.map((f) => f.filename);
+  return files.map((f) => f.path);
 }
 
 async function waitForFriendSession(log: Log, timeoutMs: number): Promise<void> {
@@ -129,7 +133,7 @@ async function waitForPeerFile(
   while (Date.now() - start < timeoutMs) {
     await openAndWatch(ctx, TEST_CREDENTIALS.volume, true);
     const files = await ctx.fileService.listFiles(TEST_CREDENTIALS.volume);
-    const hit = files.find((f) => f.filename === peerFile);
+    const hit = files.find((f) => f.path === peerFile);
     if (hit !== undefined) {
       const data = await ctx.fileService.getFile(TEST_CREDENTIALS.volume, hit.blobHash);
       if (data.length === expectedBytes) {
@@ -171,6 +175,7 @@ async function main(): Promise<void> {
 
   const bootEnd = Date.now();
   const ctx = await createContext(config);
+  attachSyncInboundRefresh(ctx);
   const bootMs = bootEnd - wallStart;
   let phases: RunPhaseTiming | null = null;
 

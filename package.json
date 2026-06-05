@@ -23,6 +23,12 @@
     "e2e:remote:campaign": "node tests/e2e/sync-metrics-remote.mjs --campaign",
     "bench:sync:quick": "NEARBYTES_BENCH_QUICK=1 node dist/sync-benchmark.js",
     "bench:sync:campaign": "NEARBYTES_BENCH_PROFILE=campaign node dist/sync-benchmark.js",
+    "bench:network:local": "node scripts/network-bench/run-local.mjs",
+    "bench:network:lan": "node scripts/network-bench/run-lan.mjs",
+    "bench:network:wan": "node scripts/network-bench/run-wan.mjs",
+    "bench:protocol:clean": "node scripts/protocol-bench/clean.mjs",
+    "bench:protocol:local": "node scripts/protocol-bench/run-local.mjs",
+    "bench:protocol:lan": "node scripts/protocol-bench/run-lan.mjs",
     "refresh": "node scripts/refresh.mjs",
     "update": "node scripts/update.mjs"
   },
@@ -31,14 +37,25 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "nearbytes-crypto": "github:nearbytes/nearbytes-crypto",
-    "nearbytes-files": "github:nearbytes/nearbytes-files",
-    "nearbytes-log": "github:nearbytes/nearbytes-log",
-    "nearbytes-skeleton": "github:nearbytes/nearbytes-skeleton"
+    "nearbytes-chat": "portal:../nearbytes-chat",
+    "nearbytes-crypto": "portal:../nearbytes-crypto",
+    "nearbytes-engine": "portal:../nearbytes-engine",
+    "nearbytes-files": "portal:../nearbytes-files",
+    "nearbytes-log": "portal:../nearbytes-log",
+    "nearbytes-skeleton": "portal:../nearbytes-skeleton"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "typescript": "^5.3.2"
   },
-  "packageManager": "yarn@4.15.0"
+  "packageManager": "yarn@4.15.0",
+  "resolutions": {
+    "nearbytes-crypto": "portal:../nearbytes-crypto",
+    "nearbytes-log": "portal:../nearbytes-log",
+    "nearbytes-sync": "portal:../nearbytes-sync",
+    "nearbytes-skeleton": "portal:../nearbytes-skeleton",
+    "nearbytes-chat": "portal:../nearbytes-chat",
+    "nearbytes-engine": "portal:../nearbytes-engine",
+    "nearbytes-files": "portal:../nearbytes-files"
+  }
 }

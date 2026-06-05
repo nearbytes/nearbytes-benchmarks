@@ -14,7 +14,11 @@ import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import { writeConfig, readConfig, type NearbytesConfig } from 'nearbytes-skeleton';
-import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
+import {
+  createEngineRuntime as createContext,
+  openAndWatch,
+  attachSyncInboundRefresh,
+} from 'nearbytes-engine';
 
 const SHARED_PROFILE_SECRET = 'nearbytes-vincenzo:sibling-shared-strong-secret';
 const VOLUME_SECRET = 'nearbytes-sibling-test:beautiful-document';
@@ -91,6 +95,7 @@ async function main(): Promise<void> {
   const config = await readConfig(configPath);
 
   const ctx = await createContext(config);
+  attachSyncInboundRefresh(ctx);
   await openAndWatch(ctx, VOLUME_SECRET);
 
   const myName = role === 'a1' ? FILE_NAME_A1 : FILE_NAME_A2;
@@ -104,7 +109,7 @@ async function main(): Promise<void> {
   await waitFor(
     async () => {
       const list = await ctx.fileService.listFiles(VOLUME_SECRET);
-      const seen = list.some((f) => f.filename === peerName);
+      const seen = list.some((f) => f.path === peerName);
       return seen ? true : null;
     },
     peerWaitMs,
@@ -112,7 +117,7 @@ async function main(): Promise<void> {
   );
 
   const list = await ctx.fileService.listFiles(VOLUME_SECRET);
-  const names = list.map((f) => f.filename).sort();
+  const names = list.map((f) => f.path).sort();
   // eslint-disable-next-line no-console
   console.log(JSON.stringify({ role, files: names }));
   if (!names.includes(FILE_NAME_A1) || !names.includes(FILE_NAME_A2)) {

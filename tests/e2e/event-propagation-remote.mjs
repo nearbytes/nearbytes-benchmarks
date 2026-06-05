@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { getBenchPaths, getRemoteHost, getRemoteFilesRoot, getRepoRoot } from './lib/config.mjs';
 
 const FILES_ROOT = join(getRepoRoot(), '..', 'nearbytes-files');
+const ENGINE_ROOT = join(getRepoRoot(), '..', 'nearbytes-engine');
 const PROBE = join(FILES_ROOT, 'scripts/event-propagation-probe.mjs');
 /** Loopback uses 3s/2s; WAN peer discovery often needs longer (override via env). */
 const PEER_MS = Number(process.env.NBF_PROP_PEER_TIMEOUT_MS ?? 12_000);
@@ -24,7 +25,8 @@ const remoteHost = await getRemoteHost();
 const remoteFilesRoot = (await getRemoteFilesRoot()).replace(/^~/, '/home/vincenzo');
 const sshOpts = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${paths.sshConnectTimeoutSec}`];
 
-if (!process.env.NBF_PROP_SKIP_BUILD && !existsSync(join(FILES_ROOT, 'dist/probeRuntime.js'))) {
+if (!process.env.NBF_PROP_SKIP_BUILD && !existsSync(join(ENGINE_ROOT, 'dist/index.js'))) {
+  execSync('yarn build', { cwd: ENGINE_ROOT, stdio: 'inherit' });
   execSync('yarn build', { cwd: FILES_ROOT, stdio: 'inherit' });
 }
 

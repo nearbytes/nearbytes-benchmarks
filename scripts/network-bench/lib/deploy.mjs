@@ -5,10 +5,8 @@
  *
  * 1. rsyncs the six nearbytes-* source trees from this Mac to `workdir`
  *    on the target (excluding `node_modules`, `dist`, `.yarn`, `.git`).
- * 2. ensures a user-local Node ≥ 20.10 lives under
- *    `${workdir}/.toolchain/node/`. Node 20 is required because
- *    `nearbytes-skeleton` uses recursive `fs.watch`, which is unsupported
- *    on Linux in Node ≤ 19.
+ * 2. ensures a user-local Node 22.x lives under `${workdir}/.toolchain/node/`
+ *    (projection engine uses `node:sqlite`, Node 22+ only).
  * 3. installs deps with yarn 1 (via npx) — npm v9 on stock Debian/Ubuntu
  *    Node has a known bug placing transitive `file:` deps; yarn 1 sidesteps
  *    it with symlinks.
@@ -33,7 +31,9 @@ export const NB_REPOS = [
   'nearbytes-log',
   'nearbytes-sync',
   'nearbytes-skeleton',
+  'nearbytes-chat',
   'nearbytes-files',
+  'nearbytes-engine',
   'nearbytes-benchmarks',
 ];
 
@@ -68,11 +68,10 @@ function rsyncRepo(repo, sshAlias, remoteDir) {
  *
  *  - TMPDIR is redirected to $HOME/tmp because some bench hosts run with
  *    a critically-full root partition (zombie: / at 100%).
- *  - Installs use yarn 1.22 via npx. npm v9 — the version shipped on
- *    Debian/Ubuntu Node 18 — has a known bug placing transitive `file:`
- *    deps (ENOENT on the hoisted node_modules/<dep>/package.json).
- *    Yarn 1 sidesteps this by symlinking file: deps directly. */
-const NODE_VERSION = '20.19.4';
+ *  - Installs use Corepack + Yarn 4 (packageManager field in each repo).
+ *    Sibling repos are rsync'd side-by-side so portal: deps resolve. */
+/** Node 22+ required: nearbytes-log projection persistence uses built-in `node:sqlite`. */
+const NODE_VERSION = '22.18.0';
 
 function buildScript(workdir) {
   return `
@@ -95,16 +94,17 @@ export PATH="$NODE_HOME/bin:$PATH"
 node --version | sed 's/^/node: /'
 
 # --- 2. install + build each repo --------------------------------------------
+corepack enable 2>/dev/null || true
+
 build_if_stale() {
   local repo="$1"
   echo "==> $repo"
   cd "$repo"
-  if [ ! -d node_modules ]; then
-    rm -f package-lock.json yarn.lock
-    npx --yes yarn@1.22.22 install --no-progress --ignore-engines --non-interactive 2>&1 | tail -3
+  if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then
+    yarn install 2>&1 | tail -5
   fi
   if [ ! -d dist ] || [ -n "$(find src package.json tsconfig.json -newer dist -print -quit 2>/dev/null)" ]; then
-    npm run build --silent 2>&1 | tail -3
+    yarn build 2>&1 | tail -5
   fi
   cd ..
 }
@@ -115,7 +115,10 @@ done
 
 node -e "
 const fs=require('fs');
-const must=['nearbytes-benchmarks/dist/scripts/network-peer.js'];
+const must=[
+  'nearbytes-benchmarks/dist/scripts/network-peer.js',
+  'nearbytes-benchmarks/dist/scripts/protocol-peer.js',
+];
 for(const p of must){ if(!fs.existsSync(p)){ console.error('missing:'+p); process.exit(1); } }
 console.log('bootstrap-ok');
 "

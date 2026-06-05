@@ -28,7 +28,11 @@ import { createInterface } from 'readline';
 import { createCryptoOperations, createSecret, bytesToHex } from 'nearbytes-crypto';
 import { writeConfig, type NearbytesConfig } from 'nearbytes-skeleton';
 import type { Log } from 'nearbytes-log';
-import { createProbeRuntime as createContext, openAndWatch } from 'nearbytes-files/probe-runtime';
+import {
+  createEngineRuntime as createContext,
+  openAndWatch,
+  attachSyncInboundRefresh,
+} from 'nearbytes-engine';
 import { makePayload } from '../benchmark-lib.js';
 import { readBenchMarkers } from './test-markers.js';
 
@@ -147,6 +151,7 @@ async function main(): Promise<void> {
   const { config, configPath } = await setupConfig(role);
   diag(`role=${role} config=${configPath} pid=${process.pid}`);
   const ctx = await createContext(config);
+  attachSyncInboundRefresh(ctx);
 
   // Open and start watching the shared volume; this primes the channel
   // and keeps the receiver's poll loop attached for inbound files.

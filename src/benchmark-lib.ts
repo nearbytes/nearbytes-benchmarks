@@ -10,12 +10,13 @@ import {
   createIdentityRecord,
   serializeIdentityRecord,
   verifyIdentityRecord,
-} from 'nearbytes-files/chatCodec';
+} from 'nearbytes-chat';
 import {
-  createProbeRuntime as createContext,
+  createEngineRuntime as createContext,
   openAndWatch,
-  type ProbeRuntime as Context,
-} from 'nearbytes-files/probe-runtime';
+  attachSyncInboundRefresh,
+  type EngineRuntime as Context,
+} from 'nearbytes-engine';
 import { BENCH_CREDENTIALS } from './benchmark-credentials.js';
 
 export type BenchRole = 'sender' | 'receiver';
@@ -424,7 +425,7 @@ export async function writeLatencyRecvAck(
 
 export async function listBenchFilenames(ctx: Context): Promise<string[]> {
   const files = await ctx.fileService.listFiles(BENCH_CREDENTIALS.volume);
-  return files.map((f) => f.filename).filter((n) => n.startsWith('bench-'));
+  return files.map((f) => f.path).filter((n) => n.startsWith('bench-'));
 }
 
 /** Wait until a bench volume file appears. timeoutMs 0 = event-driven (no wall-clock limit). */
@@ -552,5 +553,7 @@ export function benchProgress(role: string, message: string): void {
 }
 
 export async function createBenchContext(config: NearbytesConfig): Promise<Context> {
-  return createContext(config);
+  const rt = await createContext(config);
+  attachSyncInboundRefresh(rt);
+  return rt;
 }

@@ -29,3 +29,13 @@ yarn report:figures
 ```
 
 Methodology: `requirements/benchmark-methodology-v1.md`.
+
+Protocol benchmark (chat + 16--64 MiB files + replay scaling):
+
+```sh
+yarn bench:protocol:local
+yarn bench:protocol:lan    # needs config/bench-hosts.local.json
+NEARBYTES_PROTOCOL_SMOKE=1 yarn bench:protocol:local
+```
+
+Methodology: `requirements/protocol-benchmark-v1.md`. Paper figures: `yarn data:pull` then `yarn figures:protocol` in `paper-nearbytes-hypercore`.
