@@ -69,7 +69,7 @@ function rsyncRepo(repo, sshAlias, remoteDir) {
  *  - TMPDIR is redirected to $HOME/tmp because some bench hosts run with
  *    a critically-full root partition (zombie: / at 100%).
  *  - Installs use Corepack + Yarn 4 (packageManager field in each repo).
- *    Sibling repos are rsync'd side-by-side so portal: deps resolve. */
+ *    Sibling repos are rsync'd side-by-side and built from source on the host. */
 /** Node 22+ required: nearbytes-log projection persistence uses built-in `node:sqlite`. */
 const NODE_VERSION = '22.18.0';
 
