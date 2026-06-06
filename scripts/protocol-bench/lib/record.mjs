@@ -43,6 +43,10 @@ export class TestDb {
     process.stdout.write(`${n}${msg}\n`);
   }
 
+  status(msg) {
+    process.stdout.write(`${msg}\n`);
+  }
+
   async recordTrial(slug, payload, { log } = {}) {
     const base = join(this.root, slug);
     const record = {

@@ -12,7 +12,7 @@ export function quantiles(xs) {
   };
 }
 
-export function studentCi95(values) {
+export function studentCi95(values, { min = -Infinity } = {}) {
   const v = values.filter(Number.isFinite);
   const n = v.length;
   if (n < 2) return null;
@@ -21,7 +21,7 @@ export function studentCi95(values) {
   const se = Math.sqrt(variance / n);
   const t = n <= 30 ? tTable(n - 1) : 1.96;
   const half = t * se;
-  return { n, mean, low: mean - half, high: mean + half };
+  return { n, mean, low: Math.max(min, mean - half), high: mean + half };
 }
 
 function tTable(df) {

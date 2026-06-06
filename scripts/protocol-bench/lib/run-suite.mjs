@@ -31,7 +31,7 @@ function countTrials(W, matrix) {
   }
   if (matrix.chatSync) {
     if (W.chatWarmup > 0) n += 1;
-    n += W.chatTargets.length;
+    n += W.chatTargets.filter((target) => target > W.chatWarmup).length;
   }
   if (matrix.chatReplay) {
     n += W.chatTargets.filter((t) => W.replayMidChat.includes(t)).length;
@@ -69,7 +69,7 @@ export async function runProtocolSuite({
     ...extraMeta,
   });
 
-  db.progress(`protocol ${category} matrix=${matrix.raw} → ${outDir}`);
+  db.status(`protocol ${category} matrix=${matrix.raw} → ${outDir}`);
 
   const chatBatches = [];
   const replayCheckpoints = [];
@@ -252,7 +252,7 @@ export async function runProtocolSuite({
             runs,
             wallMs: quantiles(runs.map((r) => r.wallMs)),
             goodputMbps: quantiles(runs.map((r) => r.goodputMbps)),
-            ci95Mbps: studentCi95(runs.map((r) => r.goodputMbps)),
+            ci95Mbps: studentCi95(runs.map((r) => r.goodputMbps), { min: 0 }),
           });
         }
       }
@@ -314,6 +314,6 @@ export async function runProtocolSuite({
     await cp(join(outDir, 'manifest.json'), join(dirname(summaryLink), `${category}-manifest.json`));
   }
 
-  db.progress(`done ${summary.wallSeconds}s → summary.json`);
+  db.status(`done ${summary.wallSeconds}s → summary.json`);
   return summary;
 }

@@ -30,7 +30,7 @@ Each file is **16 MiB** max. Scale aggregate load by count $K$:
 | 8 | parallel burst | 128 MiB |
 | 16 | parallel burst | 256 MiB |
 
-Goodput uses total bytes / wall time. Timeout scales with aggregate size (LAN allows longer caps).
+Goodput uses total bytes / wall time. Timeout scales with aggregate size (LAN allows longer caps). Goodput confidence intervals are bounded at 0; summaries must not report negative lower bounds for nonnegative physical metrics.
 
 ### C. Replay
 
@@ -69,4 +69,4 @@ yarn bench:protocol:lan
 NEARBYTES_PROTOCOL_SMOKE=1 yarn bench:protocol:local
 ```
 
-Console output is a mild `[step/total]` progress line per trial; details live in per-trial `.json` / `.log` files.
+Console output is a mild `[step/total]` progress line per recorded trial; setup and completion status lines are unnumbered. Skipped cumulative targets that are already satisfied by warmup are excluded from the total. Details live in per-trial `.json` / `.log` files.
