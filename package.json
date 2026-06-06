@@ -29,6 +29,7 @@
     "bench:protocol:clean": "node scripts/protocol-bench/clean.mjs",
     "bench:protocol:local": "node scripts/protocol-bench/run-local.mjs",
     "bench:protocol:lan": "node scripts/protocol-bench/run-lan.mjs",
+    "bench:protocol:wan": "node scripts/protocol-bench/run-wan.mjs",
     "refresh": "node scripts/refresh.mjs",
     "update": "node scripts/update.mjs"
   },
@@ -39,10 +40,10 @@
   "dependencies": {
     "nearbytes-chat": "https://github.com/nearbytes/nearbytes-chat.git#commit=6892ff741b7af37796b529d04cbb00fe2064f3d3",
     "nearbytes-crypto": "github:nearbytes/nearbytes-crypto",
-    "nearbytes-engine": "https://github.com/nearbytes/nearbytes-engine.git#commit=8e78504158321b3485b6b678e79dba5f32bf0907",
-    "nearbytes-files": "https://github.com/nearbytes/nearbytes-files.git#commit=79abbbe266055c514f63a3feadef8c4f96d51d49",
+    "nearbytes-engine": "https://github.com/nearbytes/nearbytes-engine.git#commit=46a0d9351dfda53df73e9616a6dec5907150b1e5",
+    "nearbytes-files": "https://github.com/nearbytes/nearbytes-files.git#commit=dd6ba642bdf2154adece77f780bd6bcf12c23f14",
     "nearbytes-log": "https://github.com/nearbytes/nearbytes-log.git#commit=0a1bef159ead34b542d20af74b8473e2232a90e2",
-    "nearbytes-skeleton": "https://github.com/nearbytes/nearbytes-skeleton.git#commit=b3c32ae457ac263cbf586319821822b1cd871c04"
+    "nearbytes-skeleton": "https://github.com/nearbytes/nearbytes-skeleton.git#commit=fa5d953986e96ad8dbc12bbfe9b4bd7dc00f0421"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

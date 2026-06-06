@@ -7,7 +7,10 @@ Publication-grade measurements for Nearbytes hub-channel protocols over friend c
 | Category | Endpoints | Control plane |
 |----------|-----------|---------------|
 | `local` | Alice + Bob on loopback | this Mac |
-| `lan` | `pc-ciancia` ↔ `zombie` | this Mac (SSH JSON only) |
+| `lan` | two configured LAN peers | this Mac (SSH JSON only) |
+| `wan` | this machine ↔ configured SSH remote | this machine (local peer + SSH JSON to remote peer) |
+
+The `wan` topology MUST run with Hyperswarm-only discovery (`NEARBYTES_PROTOCOL_WAN_DISCOVERY=dht` or `hyperswarm`) so peer attachment, latency, and goodput are measured over the DHT path only. A WAN run MUST NOT be satisfied by mDNS/TCP LAN discovery.
 
 ## Credentials
 
@@ -66,6 +69,8 @@ yarn bench:protocol:clean
 yarn build
 yarn bench:protocol:local
 yarn bench:protocol:lan
+yarn bench:protocol:wan
+NEARBYTES_PROTOCOL_WAN_DISCOVERY=dht yarn bench:protocol:wan
 NEARBYTES_PROTOCOL_SMOKE=1 yarn bench:protocol:local
 ```
 

@@ -86,7 +86,14 @@ NODE_HOME="$TOOL/node-v${NODE_VERSION}-linux-x64"
 if [ ! -x "$NODE_HOME/bin/node" ]; then
   mkdir -p "$TOOL"
   echo "==> downloading Node ${NODE_VERSION}…"
-  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o "$TOOL/node.tar.xz"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o "$TOOL/node.tar.xz"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -O "$TOOL/node.tar.xz"
+  else
+    echo "curl or wget required to download Node ${NODE_VERSION}" >&2
+    exit 127
+  fi
   tar -xJf "$TOOL/node.tar.xz" -C "$TOOL"
   rm -f "$TOOL/node.tar.xz"
 fi

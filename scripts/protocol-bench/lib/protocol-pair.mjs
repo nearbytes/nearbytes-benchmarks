@@ -90,7 +90,13 @@ function spawnPeer(role, peerBase, { discovery = 'mdns', friendMs = 15000 } = {}
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let stderr = '';
-  child.stderr.on('data', (c) => (stderr += c.toString()));
+  child.stderr.on('data', (c) => {
+    const text = c.toString();
+    stderr += text;
+    if (process.env.NEARBYTES_PROTOCOL_PEER_STDERR === '1') {
+      process.stderr.write(`[${role}] ${text}`);
+    }
+  });
   child.on('exit', (code) => {
     if (code !== 0 && code !== null) {
       console.error(`[${role}] exited ${code}; stderr tail:\n${stderr.slice(-400)}`);
@@ -122,7 +128,13 @@ function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000 } = {
     remoteCmd,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
   let stderr = '';
-  child.stderr.on('data', (c) => (stderr += c.toString()));
+  child.stderr.on('data', (c) => {
+    const text = c.toString();
+    stderr += text;
+    if (process.env.NEARBYTES_PROTOCOL_PEER_STDERR === '1') {
+      process.stderr.write(`[${role}@${host.ssh}] ${text}`);
+    }
+  });
   child.on('exit', (code) => {
     if (code !== 0 && code !== null) {
       process.stderr.write(`[${role}@${host.ssh}] exited ${code}; stderr tail:\n${stderr.slice(-600)}\n`);
@@ -169,6 +181,22 @@ export class ProtocolPair {
     return Object.assign(new ProtocolPair(alice, bob), {
       friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
       hosts: { alice: aliceHost, bob: bobHost },
+    });
+  }
+
+  static async startHybrid(base, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 90000 } = {}) {
+    await rm(base, { recursive: true, force: true });
+    await mkdir(base, { recursive: true });
+    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs });
+    await new Promise((r) => setTimeout(r, 500));
+    const alice = spawnPeer('alice', base, { discovery, friendMs });
+    const [aliceReady, bobReady] = await Promise.all([
+      withTimeout(alice.ready(), readyTimeoutMs, 'alice ready'),
+      withTimeout(bob.ready(), readyTimeoutMs, `bob@${bobHost.ssh} ready`),
+    ]);
+    return Object.assign(new ProtocolPair(alice, bob), {
+      friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
+      hosts: { alice: null, bob: bobHost },
     });
   }
 
