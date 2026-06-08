@@ -243,17 +243,19 @@ async function doExpect(
   const captured: { bytes: number; receivedMs: number; fields: Record<string, unknown> }[] = [];
   const startMarkers = await readBenchMarkers(ctx.skeleton.log);
   const startCount = startMarkers.length;
+  const consumedMarkers = new Set<number>();
   const deadline = Date.now() + cmd.timeoutMs;
   while (remaining.length > 0 && Date.now() < deadline) {
     const markers = await readBenchMarkers(ctx.skeleton.log);
-    for (let i = startCount + captured.length; i < markers.length; i++) {
+    for (let i = startCount; i < markers.length; i++) {
+      if (consumedMarkers.has(i)) continue;
       const m = markers[i];
       if (m.event !== 'bulk-recv-phases') continue;
       const fields = (m.fields ?? {}) as Record<string, unknown>;
       const bytes = Number(fields.bytes ?? 0);
-      // Pick the first still-pending expected file whose size matches.
       const idx = remaining.findIndex((e) => Math.abs(bytes - e.bytes) <= e.bytes * 0.05);
       if (idx < 0) continue;
+      consumedMarkers.add(i);
       remaining.splice(idx, 1);
       captured.push({ bytes, receivedMs: Date.now() - t0, fields });
     }

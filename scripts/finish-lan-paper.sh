@@ -32,6 +32,4 @@ else
 fi
 
 cd "$PAPER"
-node figures-tools/scripts/pull-bench-data.mjs --source "$BENCH/.local/bench"
-node figures-tools/scripts/build-transfer-matrix-figures.mjs
-echo "Paper transfer-matrix figures refreshed under $PAPER/figures/benchmark-transfer-matrix-*.tex"
+yarn paper:update --source "$BENCH/.local/bench"

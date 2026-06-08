@@ -44,6 +44,7 @@
     "bench:protocol:transfer-matrix:lan:detached": "bash scripts/protocol-bench/run-transfer-matrix-lan-detached.sh",
     "bench:protocol:transfer-matrix:lan:pull": "bash scripts/protocol-bench/pull-transfer-matrix-lan.sh",
     "bench:protocol:transfer-matrix:lan:finish-paper": "bash scripts/finish-lan-paper.sh",
+    "bench:paper": "node scripts/bench-paper.mjs",
     "bench:protocol:lan-compare:detached": "bash scripts/protocol-bench/run-lan-compare-detached.sh",
     "bench:protocol:lan-compare:pull": "bash scripts/protocol-bench/pull-lan-compare.sh",
     "refresh": "node scripts/refresh.mjs",

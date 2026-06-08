@@ -277,6 +277,15 @@ export class NearbytesPair {
         renameMs: rename - hashD,
       };
     });
+    if (files.length > 1) {
+      for (const ps of perStream) {
+        if (ps.wireMs <= 0) {
+          throw new Error(
+            `invalid nearbytes burst measurement: wireMs=0 for ${ps.bytes}B block (stale marker match — rebuild network-peer and retry)`,
+          );
+        }
+      }
+    }
     return {
       wallMs,
       bobReceiveMs: expect.files.map((f) => ({ name: f.name, bytes: f.bytes, receivedMs: f.receivedMs })),
