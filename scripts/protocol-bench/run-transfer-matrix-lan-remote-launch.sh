@@ -9,6 +9,7 @@ HOSTS_JSON="$(node "$ROOT/scripts/lib/resolve-config-path.mjs")"
 ALICE="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan alice ssh)"
 ALICE_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan alice workdir)"
 BOB="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob ssh)"
+BOB_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob workdir)"
 NB="$ALICE_WORKDIR/nearbytes-benchmarks"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -27,6 +28,16 @@ echo "LAN remote launch: alice=${ALICE} bob=${BOB}"
 echo "Preflight SSH to alice (short)…"
 ssh -o ConnectTimeout=15 -o BatchMode=yes "$ALICE" 'echo alice-ok' >/dev/null
 
+if [[ "${NEARBYTES_LAN_SKIP_DEPLOY:-}" != "1" ]]; then
+  echo "Deploy latest nearbytes to alice (orchestrator)…"
+  node --input-type=module -e "
+import { ensureRemoteWorkspace } from './scripts/network-bench/lib/deploy.mjs';
+await ensureRemoteWorkspace('$ALICE', '$ALICE_WORKDIR');
+console.log('deploy ok');
+"
+else
+  echo "Skipping deploy (NEARBYTES_LAN_SKIP_DEPLOY=1)"
+fi
 echo "Syncing harness scripts to ${ALICE}…"
 rsync -az \
   --exclude='node_modules' --exclude='dist' --exclude='.git' \
@@ -50,9 +61,9 @@ if ! ssh -o ConnectTimeout=15 -o BatchMode=yes -n "$ALICE" "ssh -o BatchMode=yes
 fi
 
 echo "Stopping any prior remote worker…"
-ssh -n "$ALICE" "pkill -f '[r]un-transfer-matrix-lan-remote-worker' 2>/dev/null || true; pkill -f '[p]rotocol-peer.js' 2>/dev/null || true"
+ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "pkill -f '[r]un-transfer-matrix-lan-remote-worker' 2>/dev/null || true; pkill -f '[p]rotocol-peer.js' 2>/dev/null || true"
 
-ssh -n "$ALICE" "mkdir -p '$NB/.local/bench/protocol' '$NB/.local/tmp' && chmod +x '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh'"
+ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "mkdir -p '$NB/.local/bench/protocol' '$NB/.local/tmp' && chmod +x '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh'"
 
 {
   echo "mode=remote"
@@ -70,7 +81,7 @@ ssh -n "$ALICE" "mkdir -p '$NB/.local/bench/protocol' '$NB/.local/tmp' && chmod 
 : > "$LOG"
 echo "[launch $(date -u +%Y-%m-%dT%H:%M:%SZ)] remote worker starting on ${ALICE}" >> "$LOG"
 
-ssh -n "$ALICE" "cd '$NB' && nohup '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh' '$REMOTE_OUT' '$REMOTE_LOG' '$REMOTE_META' >> '$REMOTE_LOG' 2>&1 & echo \$! > '$REMOTE_PIDFILE'"
+ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "cd '$NB' && nohup '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh' '$REMOTE_OUT' '$REMOTE_LOG' '$REMOTE_META' >> '$REMOTE_LOG' 2>&1 & echo \$! > '$REMOTE_PIDFILE'"
 
 echo "Remote LAN transfer matrix started on ${ALICE}"
 echo "  remote out: ${REMOTE_OUT}"

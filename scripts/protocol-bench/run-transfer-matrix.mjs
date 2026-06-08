@@ -346,20 +346,38 @@ async function startPair(category, hosts) {
   });
 }
 
-/** One warm friend session for all LAN rows. WAN needs a fresh session per row. */
-function reuseNearbytesPair(category) {
-  return category === 'lan';
+function isRetryableNearbytesError(err) {
+  const msg = String(err?.message ?? err);
+  return /peer-stalled|timeout|ECONNRESET|socket hang up/i.test(msg);
 }
 
-async function measureNearbytesOnPair(pair, plan, category) {
-  return measureRepeated('nearbytes', plan, async (rep) => {
-    const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
-    const timeoutMs = nearbytesTimeoutMs(category, plan);
-    log(`nearbytes ${plan.label} rep ${rep + 1} — publish ${plan.count}×${(plan.bytes / MIB).toFixed(1)} MiB (timeout=${timeoutMs}ms)`);
-    const r = await pair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: plan.label });
-    log(`nearbytes ${plan.label} rep ${rep + 1} — ${r.goodputMbps} Mb/s wall=${r.wallMs}ms publish=${r.publishWallMs}ms`);
-    return { wallMs: r.wallMs, bytes: r.bytes, goodputMbps: r.goodputMbps, publishWallMs: r.publishWallMs };
-  }).then((measured) => ({ ...measured, friendSessionMs: pair.friendMs }));
+async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}) {
+  let activePair = pair;
+  const measured = await measureRepeated('nearbytes', plan, async (rep) => {
+    const maxAttempts = category === 'lan' ? 3 : 2;
+    let lastErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
+        const timeoutMs = nearbytesTimeoutMs(category, plan);
+        log(`nearbytes ${plan.label} rep ${rep + 1} — publish ${plan.count}×${(plan.bytes / MIB).toFixed(1)} MiB (timeout=${timeoutMs}ms)`);
+        const r = await activePair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: plan.label });
+        log(`nearbytes ${plan.label} rep ${rep + 1} — ${r.goodputMbps} Mb/s wall=${r.wallMs}ms publish=${r.publishWallMs}ms`);
+        return { wallMs: r.wallMs, bytes: r.bytes, goodputMbps: r.goodputMbps, publishWallMs: r.publishWallMs };
+      } catch (err) {
+        lastErr = err;
+        if (!isRetryableNearbytesError(err) || attempt === maxAttempts) throw err;
+        log(`nearbytes ${plan.label} rep ${rep + 1} attempt ${attempt} failed (${err.message}) — retrying`);
+        if (restartPair) {
+          activePair = await restartPair();
+        } else {
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+        }
+      }
+    }
+    throw lastErr ?? new Error(`nearbytes ${plan.label} rep ${rep + 1} failed`);
+  });
+  return { ...measured, friendSessionMs: activePair.friendMs };
 }
 
 function selectedCases() {
@@ -403,27 +421,23 @@ async function runCategory(category, hosts, report) {
   const categoryResults = plans.map((plan) => ({ plan, systems: {} }));
 
   try {
-    let sharedPair = null;
-    if (reuseNearbytesPair(category)) {
-      log(`nearbytes — opening shared ${category} peer session (${topologyMeta(category, hosts).discovery}) for all cases`);
-      sharedPair = await startFreshPair(category, hosts);
-      log(`nearbytes — friend session alice=${sharedPair.friendMs?.alice ?? '?'}ms bob=${sharedPair.friendMs?.bob ?? '?'}ms`);
-    }
     for (let i = 0; i < plans.length; i++) {
       const plan = plans[i];
       log(`── ${category} / ${plan.label} (${plan.count}×${(plan.bytes / MIB).toFixed(1)} MiB) — nearbytes ──`);
-      let pair = sharedPair;
-      let ownsPair = false;
-      if (!pair) {
-        log(`nearbytes — fresh ${category} peer session for ${plan.label}`);
+      log(`nearbytes — fresh ${category} peer session for ${plan.label}`);
+      let pair = await startFreshPair(category, hosts);
+      const ownsPair = true;
+      const restartPair = async () => {
+        await pair.stop().catch(() => {});
+        killStrayProtocolPeers();
+        await new Promise((r) => setTimeout(r, 2000));
         pair = await startFreshPair(category, hosts);
-        ownsPair = true;
-      }
+        log(`nearbytes — restarted friend session alice=${pair.friendMs?.alice ?? '?'}ms bob=${pair.friendMs?.bob ?? '?'}ms`);
+        return pair;
+      };
       try {
-        if (ownsPair) {
-          log(`nearbytes — friend session alice=${pair.friendMs?.alice ?? '?'}ms bob=${pair.friendMs?.bob ?? '?'}ms`);
-        }
-        categoryResults[i].systems.nearbytes = await measureNearbytesOnPair(pair, plan, category);
+        log(`nearbytes — friend session alice=${pair.friendMs?.alice ?? '?'}ms bob=${pair.friendMs?.bob ?? '?'}ms`);
+        categoryResults[i].systems.nearbytes = await measureNearbytesOnPair(pair, plan, category, { restartPair });
         log(`── ${plan.label} nearbytes=${categoryResults[i].systems.nearbytes.goodputMbps} Mb/s ──`);
       } finally {
         if (ownsPair) {
@@ -436,11 +450,6 @@ async function runCategory(category, hosts, report) {
       report.generatedAt = new Date().toISOString();
       report.status = 'in_progress';
       await writeCheckpoint(report);
-    }
-    if (sharedPair) {
-      await sharedPair.stop().catch(() => {});
-      killStrayProtocolPeers();
-      await new Promise((r) => setTimeout(r, 500));
     }
 
     if (!nearbytesOnly) {

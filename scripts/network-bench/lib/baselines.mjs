@@ -263,8 +263,8 @@ export function ensureLocalAlicePayload(aliceHost, name, bytes, seed) {
   return out;
 }
 
-export async function ensureAlicePayload(aliceHost, name, bytes, seed, { local = false } = {}) {
-  if (local || !aliceHost.ssh) {
+export async function ensureAlicePayload(aliceHost, name, bytes, seed, { local = false, aliceLocal = false } = {}) {
+  if (local || aliceLocal || !aliceHost.ssh) {
     return ensureLocalAlicePayload(aliceHost, name, bytes, seed);
   }
   const dir = alicePayloadDir(aliceHost);

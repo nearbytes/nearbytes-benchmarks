@@ -8,6 +8,7 @@ HOSTS_JSON="$(node "$ROOT/scripts/lib/resolve-config-path.mjs")"
 ALICE="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan alice ssh)"
 ALICE_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan alice workdir)"
 BOB="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob ssh)"
+BOB_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob workdir)"
 NB="$ALICE_WORKDIR/nearbytes-benchmarks"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -25,10 +26,8 @@ ssh -o ConnectTimeout=15 -o BatchMode=yes "$ALICE" 'echo alice-ok' >/dev/null
 echo "Deploy latest bits to CNR hosts…"
 node --input-type=module -e "
 import { ensureRemoteWorkspace } from './scripts/network-bench/lib/deploy.mjs';
-await Promise.all([
-  ensureRemoteWorkspace('$ALICE', '$ALICE_WORKDIR'),
-  ensureRemoteWorkspace('$BOB', '/home/vincenzo/nearbytes-bench'),
-]);
+await ensureRemoteWorkspace('$ALICE', '$ALICE_WORKDIR');
+await ensureRemoteWorkspace('$BOB', '$BOB_WORKDIR');
 console.log('deploy ok');
 "
 
