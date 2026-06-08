@@ -57,7 +57,7 @@ async function main() {
     },
     startPair: () =>
       ProtocolPair.startRemote(lan.alice, lan.bob, {
-        discovery: 'all',
+        discovery: 'mdns',
         readyTimeoutMs: 240_000,
         friendMs: 120_000,
       }),

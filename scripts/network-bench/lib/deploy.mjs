@@ -120,6 +120,24 @@ for r in ${NB_REPOS.join(' ')}; do
   build_if_stale "$r"
 done
 
+# Yarn file: deps copy sibling sources into each repo's node_modules once;
+# rebuilding nearbytes-sync/dist does not refresh those nested copies. Mirror
+# freshly built sibling dist trees so protocol-peer loads the same bits as the
+# rsync'd source (critical for LAN matrix — stale sync caused duplicate pumps).
+propagate_sibling_dist() {
+  local pkg="\$1"
+  local src="\$pkg/dist"
+  [ -d "\$src" ] || return 0
+  find . -path "*/node_modules/\$pkg/dist" -type d 2>/dev/null | while read -r dst; do
+    rm -rf "\$dst"
+    mkdir -p "\$(dirname "\$dst")"
+    cp -a "\$src" "\$dst"
+  done
+}
+for pkg in nearbytes-log nearbytes-sync nearbytes-skeleton nearbytes-chat nearbytes-files nearbytes-engine; do
+  propagate_sibling_dist "\$pkg"
+done
+
 node -e "
 const fs=require('fs');
 const must=[

@@ -3,6 +3,7 @@ dist/
 .local/
 .yarn/
 results/
+config/local.json
 config/e2e.local.json
 config/bench-hosts.local.json
 *.log

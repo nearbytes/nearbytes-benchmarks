@@ -1,4 +1,5 @@
 {
+  "_comment": "DEPRECATED — use config/local.example.json (e2e section) instead.",
   "remoteHost": "pc-ciancia",
   "remoteFilesRoot": "/home/vincenzo/data/local/repos/NEARBYTES/nearbytes-files",
   "sshConnectTimeoutSec": 10,

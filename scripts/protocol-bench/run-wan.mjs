@@ -2,7 +2,7 @@
 /**
  * Protocol benchmark — WAN (local Alice ↔ remote Bob).
  *
- * Defaults come from config/bench-hosts.local.json, with environment
+ * Defaults come from config/local.json, with environment
  * overrides for one-off private targets:
  *
  *   NEARBYTES_PROTOCOL_WAN_BOB_SSH=fmt-5000 \

@@ -160,7 +160,7 @@ async function main() {
 
   const t0 = Date.now();
   console.log('\nstarting nearbytes pair (alice@pc-ciancia + bob@zombie)…');
-  const pair = await NearbytesPair.startRemote(lan.alice, lan.bob, { readyTimeoutMs: 180000 });
+  const pair = await NearbytesPair.startRemote(lan.alice, lan.bob, { readyTimeoutMs: 180000, discovery: 'mdns' });
   console.log(`pair ready: friend session alice=${pair.friendMs.alice}ms bob=${pair.friendMs.bob}ms`);
 
   let sizeClasses;

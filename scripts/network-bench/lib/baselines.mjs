@@ -12,7 +12,7 @@
  * apples-to-apples concurrency comparison against scp/rsync.
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, unlinkSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hrMs, shellQuote, sshRun, SshMaster } from './remote.mjs';
@@ -127,32 +127,23 @@ export async function localCp(files, scratch) {
 /* ─────────────────────── lan/wan: scp ────────────────────────────────── */
 
 /**
- * scp from the local sender to a remote receiver workdir. N files are
- * scp'd in parallel (one ssh connection each) to match nearbytes burst
- * semantics. The remote workdir must exist; the caller is responsible.
- */
-/**
- * `master` is an optional SshMaster (see remote.mjs). When provided, every
- * scp invocation is multiplexed over a single persistent SSH connection,
- * which is mandatory on WAN paths to avoid tripping the receiver's
- * MaxStartups / institutional rate-limits.
+ * scp from the local sender to a remote receiver workdir. One batched
+ * `scp -O` invocation per measurement (all sources → one remote directory),
+ * matching protocol-benchmark-v1 transfer-matrix baseline rules.
  *
- * Burst semantics intentionally serialize one scp per file (with stdin
- * detached): scp does not pipeline files itself, and a Promise.all swarm
- * of 16 concurrent scps was previously the canonical way to DoS our own
- * sshd. The serial loop reflects how a human actually uses scp.
+ * `master` is an optional SshMaster (see remote.mjs). When provided, scp
+ * multiplexes over a persistent SSH connection (required on WAN paths).
  */
 export async function remoteScp(files, sshAlias, remoteDir, { master = null } = {}) {
   const extra = master ? master.sshOpts() : ['-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=15'];
   const t0 = hrMs();
-  for (const f of files) {
-    await runProc('scp', [
-      '-q',
-      ...extra,
-      f.path,
-      `${sshAlias}:${remoteDir}/scp-${f.name}.bin`,
-    ]);
-  }
+  await runProc('scp', [
+    '-q',
+    '-O',
+    ...extra,
+    ...files.map((f) => f.path),
+    `${sshAlias}:${remoteDir}/`,
+  ]);
   return { wallMs: hrMs() - t0, bytes: totalBytes(files), count: files.length };
 }
 
@@ -222,8 +213,7 @@ export function mkScratch() {
  * on the alice host. Cheap on Linux (writes via dd-like loop in node).
  * Idempotent: the script `stat`s first and skips re-generation when the size matches.
  */
-export async function ensureAlicePayload(aliceHost, name, bytes, seed) {
-  const script = `
+const PAYLOAD_GEN_SCRIPT = `
 const fs=require('fs'); const path=require('path');
 const [dir,name,bytes,seed]=process.argv.slice(2);
 const out=path.join(dir,name);
@@ -240,9 +230,48 @@ while(written<Number(bytes)){
 }
 fs.closeSync(fd);
 console.log('made',out,written);`;
-  const dir = `${aliceHost.workdir}/payloads`;
-  await sshRun(aliceHost.ssh, `mkdir -p ${shellQuote(dir)} && ${shellQuote(aliceHost.workdir + '/.toolchain/node-v20.19.4-linux-x64/bin/node')} - ${shellQuote(dir)} ${shellQuote(name)} ${bytes} ${seed}`, {
-    stdin: script,
+
+function alicePayloadDir(aliceHost) {
+  return `${aliceHost.workdir}/payloads`;
+}
+
+/** Write deterministic payload on the orchestrator host (no SSH hop). */
+export function ensureLocalAlicePayload(aliceHost, name, bytes, seed) {
+  const dir = alicePayloadDir(aliceHost);
+  mkdirSync(dir, { recursive: true });
+  const out = join(dir, name);
+  try {
+    if (statSync(out).size === bytes) return out;
+  } catch {
+    /* create */
+  }
+  let s = Number(seed) >>> 0;
+  const CHUNK = 1 << 20;
+  const buf = Buffer.allocUnsafe(CHUNK);
+  const fd = openSync(out, 'w');
+  let written = 0;
+  while (written < bytes) {
+    const n = Math.min(CHUNK, bytes - written);
+    for (let i = 0; i < n; i += 4) {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      buf.writeUInt32LE(s, i);
+    }
+    writeSync(fd, buf, 0, n);
+    written += n;
+  }
+  closeSync(fd);
+  return out;
+}
+
+export async function ensureAlicePayload(aliceHost, name, bytes, seed, { local = false } = {}) {
+  if (local || !aliceHost.ssh) {
+    return ensureLocalAlicePayload(aliceHost, name, bytes, seed);
+  }
+  const dir = alicePayloadDir(aliceHost);
+  const { REMOTE_NODE_BIN } = await import('./deploy.mjs');
+  const nodeBin = REMOTE_NODE_BIN(aliceHost.workdir);
+  await sshRun(aliceHost.ssh, `mkdir -p ${shellQuote(dir)} && ${shellQuote(nodeBin)} - ${shellQuote(dir)} ${shellQuote(name)} ${bytes} ${seed}`, {
+    stdin: PAYLOAD_GEN_SCRIPT,
     timeoutMs: 60_000,
   });
   return `${dir}/${name}`;
@@ -255,49 +284,65 @@ console.log('made',out,written);`;
  * The Mac is only a control plane: it spawns one SSH per measurement and
  * gets back a single integer (ns). The data path is strictly alice⇄bob LAN.
  */
-async function alicePushTimed(aliceHost, bobHost, alicePaths, tool) {
+function alicePushScript(bobHost, alicePaths, tool) {
   const bobDir = `${bobHost.workdir}/payloads-recv`;
-  // Burst semantics reflect typical usage of each tool:
-  //   scp   → naive serial loop over individual files (one ssh per file)
-  //   rsync → a single batched invocation with all sources (rsync's
-  //           natural mode — it pipelines multiple files over one ssh)
-  // For N=1 both reduce to the standard single-file timing.
   let body;
   if (tool === 'scp') {
-    const lines = alicePaths.map((p, i) => {
-      const dst = `${bobHost.ssh}:${bobDir}/scp-${i}.bin`;
-      return `scp -q -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 ${shellQuote(p)} ${shellQuote(dst)} </dev/null`;
-    });
-    body = lines.join('\n');
+    const sources = alicePaths.map((p) => shellQuote(p)).join(' ');
+    const dst = `${shellQuote(`${bobHost.ssh}:${bobDir}/`)}`;
+    body = `scp -q -O -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 ${sources} ${dst} </dev/null`;
   } else {
     const dst = `${bobHost.ssh}:${bobDir}/`;
     const sources = alicePaths.map((p) => shellQuote(p)).join(' ');
     body = `rsync -W --inplace -e ${shellQuote('ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15')} ${sources} ${shellQuote(dst)} </dev/null`;
   }
-  // Every nested ssh/scp/rsync gets stdin from /dev/null so it doesn't
-  // swallow the rest of this script (which arrives over the outer ssh's
-  // stdin). Without this, the very first nested ssh would consume the
-  // remaining lines and `echo WALL_NS=…` at the end would never run.
-  const script = `
+  return `
 set -e
-ssh -n -o StrictHostKeyChecking=accept-new ${bobHost.ssh} 'mkdir -p ${bobDir} && rm -f ${bobDir}/${tool}-*.bin' >/dev/null
+ssh -n -o StrictHostKeyChecking=accept-new ${shellQuote(bobHost.ssh)} ${shellQuote(`mkdir -p ${bobDir} && rm -f ${bobDir}/${tool}-*.bin`)} >/dev/null
 T0=$(date +%s%N)
 ${body}
 T1=$(date +%s%N)
 echo "WALL_NS=$((T1-T0))"
 `;
-  const { stdout } = await sshRun(aliceHost.ssh, 'bash -s', { stdin: script, timeoutMs: 600_000 });
+}
+
+async function parseWallNs(stdout) {
   const m = stdout.match(/WALL_NS=(\d+)/);
   if (!m) throw new Error(`could not parse WALL_NS from: ${stdout.slice(0, 300)}`);
   return Number(m[1]) / 1e6;
 }
 
-export async function lanScp(aliceHost, bobHost, alicePaths) {
-  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'scp');
+async function alicePushTimed(aliceHost, bobHost, alicePaths, tool, { aliceLocal = false } = {}) {
+  const script = alicePushScript(bobHost, alicePaths, tool);
+  if (aliceLocal || !aliceHost.ssh) {
+    return new Promise((resolve, reject) => {
+      const child = spawn('bash', ['-s'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      const t = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`local alice→bob ${tool} timed out`));
+      }, 600_000);
+      child.stdout.on('data', (c) => (stdout += c.toString()));
+      child.stderr.on('data', (c) => (stderr += c.toString()));
+      child.on('close', async (code) => {
+        clearTimeout(t);
+        if (code !== 0) reject(new Error(`local alice→bob ${tool} exit ${code}: ${stderr.slice(0, 300)}`));
+        else resolve(parseWallNs(stdout));
+      });
+      child.stdin.end(script);
+    });
+  }
+  const { stdout } = await sshRun(aliceHost.ssh, 'bash -s', { stdin: script, timeoutMs: 600_000 });
+  return parseWallNs(stdout);
+}
+
+export async function lanScp(aliceHost, bobHost, alicePaths, opts = {}) {
+  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'scp', opts);
   return { wallMs, count: alicePaths.length };
 }
 
-export async function lanRsync(aliceHost, bobHost, alicePaths) {
-  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'rsync');
+export async function lanRsync(aliceHost, bobHost, alicePaths, opts = {}) {
+  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'rsync', opts);
   return { wallMs, count: alicePaths.length };
 }

@@ -1,7 +1,7 @@
 /**
  * Long-lived protocol-peer driver (local + remote SSH).
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +68,7 @@ class PeerHandle {
           this.child.kill('SIGKILL');
         } catch {}
         resolve();
-      }, 3000);
+      }, 10000);
     });
   }
 }
@@ -105,7 +105,7 @@ function spawnPeer(role, peerBase, { discovery = 'mdns', friendMs = 15000 } = {}
   return new PeerHandle(role, child);
 }
 
-function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000 } = {}) {
+function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000, sshExtra = [] } = {}) {
   const peerBase = `${host.workdir}/protocol-peer-${role}`;
   const nbDir = `${host.workdir}/nearbytes-benchmarks`;
   const peerBin = `${nbDir}/dist/scripts/protocol-peer.js`;
@@ -122,8 +122,10 @@ function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000 } = {
       `${shq(nodeBin)} ${shq(peerBin)}`,
   ].join(' && ');
   const child = spawn('ssh', [
+    '-o', 'ConnectTimeout=30',
     '-o', 'ServerAliveInterval=15',
-    '-o', 'ServerAliveCountMax=4',
+    '-o', 'ServerAliveCountMax=8',
+    ...sshExtra,
     host.ssh,
     remoteCmd,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -155,25 +157,27 @@ export class ProtocolPair {
     this.chatTotal = 0;
   }
 
-  static async startLocal(base) {
+  static async startLocal(base, { readyTimeoutMs = 180000, friendMs = 15000 } = {}) {
     await rm(base, { recursive: true, force: true });
     await mkdir(base, { recursive: true });
-    const bob = spawnPeer('bob', base);
+    const bob = spawnPeer('bob', base, { friendMs });
     await new Promise((r) => setTimeout(r, 200));
-    const alice = spawnPeer('alice', base);
+    const alice = spawnPeer('alice', base, { friendMs });
     const [aliceReady, bobReady] = await Promise.all([
-      withTimeout(alice.ready(), 30000, 'alice ready'),
-      withTimeout(bob.ready(), 30000, 'bob ready'),
+      withTimeout(alice.ready(), readyTimeoutMs, 'alice ready'),
+      withTimeout(bob.ready(), readyTimeoutMs, 'bob ready'),
     ]);
     return Object.assign(new ProtocolPair(alice, bob), {
       friendMs: { alice: aliceReady.friendSessionMs, bob: bobReady.friendSessionMs },
     });
   }
 
-  static async startRemote(aliceHost, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 90000 } = {}) {
-    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs });
-    await new Promise((r) => setTimeout(r, 500));
-    const alice = spawnRemotePeer('alice', aliceHost, { discovery, friendMs });
+  static async startRemote(aliceHost, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 90000, staggerMs = 500, sshExtra = () => [] } = {}) {
+    const bobExtra = typeof sshExtra === 'function' ? sshExtra(bobHost) : sshExtra;
+    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs, sshExtra: bobExtra });
+    await new Promise((r) => setTimeout(r, staggerMs));
+    const aliceExtra = typeof sshExtra === 'function' ? sshExtra(aliceHost) : sshExtra;
+    const alice = spawnRemotePeer('alice', aliceHost, { discovery, friendMs, sshExtra: aliceExtra });
     const [aliceReady, bobReady] = await Promise.all([
       withTimeout(alice.ready(), readyTimeoutMs, `alice@${aliceHost.ssh} ready`),
       withTimeout(bob.ready(), readyTimeoutMs, `bob@${bobHost.ssh} ready`),
@@ -184,10 +188,11 @@ export class ProtocolPair {
     });
   }
 
-  static async startHybrid(base, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 90000 } = {}) {
+  static async startHybrid(base, bobHost, { discovery = 'all', readyTimeoutMs = 180000, friendMs = 90000, sshExtra = [] } = {}) {
     await rm(base, { recursive: true, force: true });
     await mkdir(base, { recursive: true });
-    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs });
+    const bobExtra = typeof sshExtra === 'function' ? sshExtra(bobHost) : sshExtra;
+    const bob = spawnRemotePeer('bob', bobHost, { discovery, friendMs, sshExtra: bobExtra });
     await new Promise((r) => setTimeout(r, 500));
     const alice = spawnPeer('alice', base, { discovery, friendMs });
     const [aliceReady, bobReady] = await Promise.all([
@@ -224,12 +229,13 @@ export class ProtocolPair {
     };
   }
 
-  async measureFiles({ files, timeoutMs, burst = false }) {
+  async measureFiles({ files, timeoutMs, burst = false, caseTag = 'xfer' }) {
     const id = this.nextId++;
+    const tag = String(caseTag).replace(/[^a-zA-Z0-9_-]/g, '_');
     const named = files.map((f, i) => ({
-      name: `proto-${id}-${i}.bin`,
+      name: `proto-${tag}-${id}-${i}.bin`,
       bytes: f.bytes,
-      seed: id * 1000 + i,
+      seed: id * 10000 + i,
     }));
     const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
     await new Promise((r) => setImmediate(r));
@@ -285,6 +291,10 @@ function withTimeout(p, ms, label) {
       },
     );
   });
+}
+
+export function killStrayProtocolPeers() {
+  spawnSync('pkill', ['-f', 'dist/scripts/protocol-peer.js'], { stdio: 'pipe' });
 }
 
 export async function ensureProtocolPeerBuilt() {

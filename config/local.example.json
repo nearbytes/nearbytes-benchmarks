@@ -1,0 +1,49 @@
+{
+  "_comment": "Copy to config/local.json (gitignored). Machines listed here are available for LOCAL, LAN, and WAN benchmarks.",
+  "machines": {
+    "local": {
+      "label": "<this machine's nickname>",
+      "ssh": null
+    },
+    "lan": {
+      "alice": {
+        "label": "<LAN host A nickname>",
+        "ssh": "<LAN host A SSH alias>",
+        "ip": "<LAN host A IPv4>",
+        "workdir": "<absolute bench workspace on host A>"
+      },
+      "bob": {
+        "label": "<LAN host B nickname>",
+        "ssh": "<LAN host B SSH alias>",
+        "ip": "<LAN host B IPv4>",
+        "workdir": "<absolute bench workspace on host B>"
+      }
+    },
+    "wan": {
+      "_comment": "Real WAN: orchestrator (this Mac) as alice, remote bob over the public internet. DHT discovery only.",
+      "alice": {
+        "label": "<orchestrator nickname>",
+        "ssh": null
+      },
+      "bob": {
+        "label": "<WAN bob nickname>",
+        "ssh": "<WAN bob SSH alias>",
+        "workdir": "<absolute bench workspace on bob>"
+      }
+    }
+  },
+  "e2e": {
+    "_comment": "Sync e2e / remote campaign paths. remoteHost defaults to machines.lan.alice.ssh when omitted.",
+    "remoteHost": null,
+    "remoteFilesRoot": "<nearbytes-files checkout on remote>",
+    "sshConnectTimeoutSec": 15,
+    "benchBaseLocal": ".local/bench/work",
+    "benchBaseRemote": "/tmp/nearbytes-sync-benchmark",
+    "benchReportsDir": ".local/bench/reports",
+    "e2eWorkDir": ".local/e2e/work",
+    "reportFiguresDir": ".local/bench/figures"
+  },
+  "bench": {
+    "targetMs": 30000
+  }
+}

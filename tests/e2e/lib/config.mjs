@@ -1,6 +1,7 @@
-import { readFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+import { loadLocalConfig } from '../../../scripts/lib/local-config.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -14,25 +15,25 @@ export function resolveRepoPath(rel) {
 }
 
 export async function loadE2eConfig() {
-  const explicit = process.env['NEARBYTES_E2E_CONFIG'];
-  const localPath = explicit ?? path.join(repoRoot, 'config/e2e.local.json');
-  const examplePath = path.join(repoRoot, 'config/e2e.local.example.json');
-  for (const p of [localPath, examplePath]) {
-    try {
-      const raw = await readFile(p, 'utf-8');
-      return { ...JSON.parse(raw), _configPath: p };
-    } catch (err) {
-      console.warn(`[e2e] config not readable at ${p}:`, err.message);
-    }
-  }
-  throw new Error(
-    `No e2e config found. Copy config/e2e.local.example.json to config/e2e.local.json`,
-  );
+  const { e2e, hosts, _configPath } = await loadLocalConfig();
+  const remoteHost =
+    process.env['NEARBYTES_REMOTE_HOST'] ??
+    e2e.remoteHost ??
+    hosts?.lan?.alice?.ssh ??
+    null;
+  return {
+    ...e2e,
+    remoteHost,
+    _configPath,
+  };
 }
 
 export async function getRemoteHost() {
   const cfg = await loadE2eConfig();
-  return process.env['NEARBYTES_REMOTE_HOST'] ?? cfg.remoteHost;
+  if (!cfg.remoteHost) {
+    throw new Error('e2e.remoteHost or machines.lan.alice.ssh required in config/local.json');
+  }
+  return cfg.remoteHost;
 }
 
 export async function getRemoteFilesRoot() {

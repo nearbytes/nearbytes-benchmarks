@@ -46,9 +46,13 @@ export function aggregateBytes(count) {
 /** Wall-clock cap for one file burst (ms), scaled by aggregate size and topology. */
 export function fileTimeoutMs(category, fileCount) {
   const aggMiB = FILE_CHUNK_MIB * fileCount;
-  const base = category === 'lan' ? 120_000 : 60_000;
-  const perMiB = category === 'lan' ? 12_000 : 4_000;
-  return Math.min(category === 'lan' ? 900_000 : 600_000, base + aggMiB * perMiB);
+  if (category === 'lan') {
+    // Gigabit LAN: 64 MiB ≈ 1s; fail fast (never multi-minute hangs).
+    return Math.min(60_000, Math.max(15_000, Math.ceil(aggMiB / 50) * 5000 + 10_000));
+  }
+  const base = 60_000;
+  const perMiB = 4_000;
+  return Math.min(600_000, base + aggMiB * perMiB);
 }
 
 export function chatTimeoutMs(category) {

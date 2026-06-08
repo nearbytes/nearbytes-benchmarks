@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to bench-hosts.local.json and edit. Local is required; lan/wan blocks are optional and skipped if absent.",
+  "_comment": "DEPRECATED — use config/local.example.json instead. Legacy copy target: bench-hosts.local.json.",
   "local": {
     "label": "<this machine's nickname>",
     "ssh": null
