@@ -18,6 +18,7 @@ import { BENCH_CREDENTIALS } from '../benchmark-credentials.js';
 import { makePayload, hrtimeMs } from '../benchmark-lib.js';
 import { readBenchMarkers } from './test-markers.js';
 import { setupProtocolConfig, type ProtocolRole } from './protocol-peer-config.js';
+import { burstParallelEnabled, pregenPayloadEnabled } from '../optimization-flags.js';
 
 interface FileSpec {
   readonly name: string;
@@ -219,30 +220,77 @@ async function doExpectChat(
   return { received: cmd.count, wallMs: Date.now() - t0 };
 }
 
+function cpuMsDelta(start: NodeJS.CpuUsage): number {
+  const d = process.cpuUsage(start);
+  return (d.user + d.system) / 1000;
+}
+
+function trackRssMax(): { sample(): void; maxBytes(): number } {
+  let max = process.memoryUsage().rss;
+  return {
+    sample() {
+      max = Math.max(max, process.memoryUsage().rss);
+    },
+    maxBytes() {
+      return max;
+    },
+  };
+}
+
+async function addOneFile(
+  rt: EngineRuntime,
+  name: string,
+  buf: Buffer,
+  bytes: number,
+  mem: ReturnType<typeof trackRssMax>,
+): Promise<{ name: string; bytes: number; publishMs: number }> {
+  const t = Date.now();
+  mem.sample();
+  await rt.fileService.addFile(BENCH_CREDENTIALS.volume, name, buf);
+  mem.sample();
+  return { name, bytes, publishMs: Date.now() - t };
+}
+
 async function doPublish(
   rt: EngineRuntime,
   cmd: PublishCommand,
-): Promise<{ files: { name: string; bytes: number; publishMs: number }[]; totalWallMs: number }> {
+): Promise<{
+  files: { name: string; bytes: number; publishMs: number }[];
+  totalWallMs: number;
+  publishCpuMs: number;
+  encodeRssBytesMax: number;
+}> {
   const t0 = Date.now();
-  const items = cmd.files.map((f) => ({ ...f, buf: makePayload(f.bytes, f.seed ?? 0) }));
-  const per: { name: string; bytes: number; publishMs: number }[] = [];
-
-  if (cmd.burst) {
-    const starts = items.map(() => Date.now());
-    await Promise.all(
-      items.map(async (it, i) => {
-        await rt.fileService.addFile(BENCH_CREDENTIALS.volume, it.name, it.buf);
-        per.push({ name: it.name, bytes: it.bytes, publishMs: Date.now() - starts[i] });
-      }),
-    );
-  } else {
-    for (const it of items) {
-      const t = Date.now();
-      await rt.fileService.addFile(BENCH_CREDENTIALS.volume, it.name, it.buf);
-      per.push({ name: it.name, bytes: it.bytes, publishMs: Date.now() - t });
+  const cpu0 = process.cpuUsage();
+  const mem = trackRssMax();
+  const specs = cmd.files.map((f) => ({ ...f, buf: null as Buffer | null }));
+  if (pregenPayloadEnabled()) {
+    for (const s of specs) {
+      mem.sample();
+      s.buf = makePayload(s.bytes, s.seed ?? 0);
+      mem.sample();
     }
   }
-  return { files: per, totalWallMs: Date.now() - t0 };
+  const per: { name: string; bytes: number; publishMs: number }[] = [];
+  const runOne = async (f: (typeof specs)[number]) => {
+    const buf = f.buf ?? makePayload(f.bytes, f.seed ?? 0);
+    return addOneFile(rt, f.name, buf, f.bytes, mem);
+  };
+  if (cmd.burst && burstParallelEnabled()) {
+    const results = await Promise.all(specs.map((s) => runOne(s)));
+    per.push(...results);
+  } else {
+    for (const s of specs) {
+      per.push(await runOne(s));
+    }
+  }
+  mem.sample();
+  return {
+    files: per,
+    totalWallMs: Date.now() - t0,
+    publishCpuMs: cpuMsDelta(cpu0),
+    encodeRssBytesMax: mem.maxBytes(),
+  };
 }
 
 async function doExpect(
@@ -251,8 +299,12 @@ async function doExpect(
 ): Promise<{
   files: { name: string; bytes: number; receivedMs: number }[];
   wallMs: number;
+  receiveCpuMs: number;
+  decodeRssBytesMax: number;
 }> {
   const t0 = Date.now();
+  const cpu0 = process.cpuUsage();
+  const mem = trackRssMax();
   const expected = cmd.files.map((f) => ({ ...f }));
   const remaining: typeof expected = [...expected];
   const captured: { bytes: number; receivedMs: number }[] = [];
@@ -261,6 +313,7 @@ async function doExpect(
   const consumedMarkers = new Set<number>();
   const deadline = Date.now() + cmd.timeoutMs;
   while (remaining.length > 0 && Date.now() < deadline) {
+    mem.sample();
     const markers = await readBenchMarkers(rt.skeleton.log);
     for (let i = startCount; i < markers.length; i++) {
       if (consumedMarkers.has(i)) continue;
@@ -280,11 +333,13 @@ async function doExpect(
     }
     if (remaining.length === 0) break;
     await new Promise((r) => setTimeout(r, 10));
+    mem.sample();
   }
   if (remaining.length > 0) {
     throw new Error(`file timeout: missing ${remaining.length}/${expected.length}`);
   }
   captured.sort((a, b) => a.receivedMs - b.receivedMs);
+  mem.sample();
   return {
     files: captured.map((c, i) => ({
       name: expected[i].name,
@@ -292,6 +347,8 @@ async function doExpect(
       receivedMs: c.receivedMs,
     })),
     wallMs: Date.now() - t0,
+    receiveCpuMs: cpuMsDelta(cpu0),
+    decodeRssBytesMax: mem.maxBytes(),
   };
 }
 

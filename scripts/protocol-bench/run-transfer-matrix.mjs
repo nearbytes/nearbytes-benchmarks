@@ -22,7 +22,6 @@ import { loadHosts, requireLan, requireWan } from '../network-bench/lib/hosts.mj
 import {
   ensureAlicePayload,
   lanNc,
-  lanNc,
   lanRsync,
   lanScp,
   localCp,
@@ -32,7 +31,11 @@ import {
   totalBytes,
 } from '../network-bench/lib/baselines.mjs';
 import { shellQuote, sshRun, SshMaster } from '../network-bench/lib/remote.mjs';
+import { aggregateNearbytesResources } from '../lib/aggregate-resources.mjs';
+import { applyOptArgvToEnv } from '../lib/optimization-flags.mjs';
 import { ProtocolPair, ensureProtocolPeerBuilt, killStrayProtocolPeers } from './lib/protocol-pair.mjs';
+
+Object.assign(process.env, applyOptArgvToEnv());
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..', '..');
@@ -365,7 +368,14 @@ async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}
         log(`nearbytes ${plan.label} rep ${rep + 1} — publish ${plan.count}×${(plan.bytes / MIB).toFixed(1)} MiB (timeout=${timeoutMs}ms)`);
         const r = await activePair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: plan.label });
         log(`nearbytes ${plan.label} rep ${rep + 1} — ${r.goodputMbps} Mb/s wall=${r.wallMs}ms publish=${r.publishWallMs}ms`);
-        return { wallMs: r.wallMs, bytes: r.bytes, goodputMbps: r.goodputMbps, publishWallMs: r.publishWallMs };
+        return {
+          wallMs: r.wallMs,
+          bytes: r.bytes,
+          goodputMbps: r.goodputMbps,
+          publishWallMs: r.publishWallMs,
+          encode: r.encode,
+          decode: r.decode,
+        };
       } catch (err) {
         lastErr = err;
         if (!isRetryableNearbytesError(err) || attempt === maxAttempts) throw err;
@@ -379,7 +389,8 @@ async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}
     }
     throw lastErr ?? new Error(`nearbytes ${plan.label} rep ${rep + 1} failed`);
   });
-  return { ...measured, friendSessionMs: activePair.friendMs };
+  const resources = aggregateNearbytesResources(measured.runs);
+  return { ...measured, friendSessionMs: activePair.friendMs, resources };
 }
 
 function selectedCases() {

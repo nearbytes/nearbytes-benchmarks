@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { REMOTE_NODE_BIN } from '../../network-bench/lib/deploy.mjs';
+import { optEnabled, optEnvShell } from '../../lib/optimization-flags.mjs';
+import { startResourceMonitor, summarize } from '../../network-bench/lib/resmon.mjs';
+
+function overlapExpectEnabled() {
+  return optEnabled('NEARBYTES_OPT_OVERLAP_EXPECT');
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(dirname(dirname(HERE)));
@@ -119,6 +125,7 @@ function spawnRemotePeer(role, host, { discovery = 'all', friendMs = 90000, sshE
       `NEARBYTES_SYNC_DISCOVERY=${discovery} ` +
       `NEARBYTES_PEER_FRIEND_MS=${friendMs} ` +
       `TMPDIR=${shq(host.workdir + '/tmp')} ` +
+      `${optEnvShell()} ` +
       `${shq(nodeBin)} ${shq(peerBin)}`,
   ].join(' && ');
   const child = spawn('ssh', [
@@ -237,21 +244,50 @@ export class ProtocolPair {
       bytes: f.bytes,
       seed: id * 10000 + i,
     }));
-    const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
-    await new Promise((r) => setImmediate(r));
-    const publishP = this.alice.send({ cmd: 'publish', id, files: named, burst: !!burst });
-    const [publish, expect] = await Promise.all([
-      withTimeout(publishP, timeoutMs, `publish files #${id}`),
-      withTimeout(expectP, timeoutMs, `expect files #${id}`),
-    ]);
+    const monAlice =
+      this.alice.child?.pid > 0 ? startResourceMonitor(this.alice.child.pid) : null;
+    const monBob = this.bob.child?.pid > 0 ? startResourceMonitor(this.bob.child.pid) : null;
+    let publish;
+    let expect;
+    if (overlapExpectEnabled()) {
+      const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
+      await new Promise((r) => setImmediate(r));
+      const publishP = this.alice.send({ cmd: 'publish', id, files: named, burst: !!burst });
+      [publish, expect] = await Promise.all([
+        withTimeout(publishP, timeoutMs, `publish files #${id}`),
+        withTimeout(expectP, timeoutMs, `expect files #${id}`),
+      ]);
+    } else {
+      const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
+      publish = await withTimeout(
+        this.alice.send({ cmd: 'publish', id, files: named, burst: !!burst }),
+        timeoutMs,
+        `publish files #${id}`,
+      );
+      expect = await withTimeout(expectP, timeoutMs, `expect files #${id}`);
+    }
     const lastRecv = Math.max(...expect.files.map((f) => f.receivedMs));
     const bytes = files.reduce((a, f) => a + f.bytes, 0);
+    const [monAliceReport, monBobReport] = await Promise.all([
+      monAlice?.stop().catch(() => null) ?? null,
+      monBob?.stop().catch(() => null) ?? null,
+    ]);
     return {
       wallMs: lastRecv,
       bytes,
       count: files.length,
       publishWallMs: publish.totalWallMs,
       goodputMbps: bytes > 0 && lastRecv > 0 ? Number(((bytes * 8) / lastRecv / 1000).toFixed(2)) : 0,
+      encode: {
+        publishCpuMs: publish.publishCpuMs,
+        encodeRssBytesMax: publish.encodeRssBytesMax,
+        monitor: monAliceReport ? summarize(monAliceReport) : null,
+      },
+      decode: {
+        receiveCpuMs: expect.receiveCpuMs,
+        decodeRssBytesMax: expect.decodeRssBytesMax,
+        monitor: monBobReport ? summarize(monBobReport) : null,
+      },
     };
   }
 

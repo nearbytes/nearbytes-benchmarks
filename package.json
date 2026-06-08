@@ -39,6 +39,7 @@
     "bench:protocol:suite:local": "node scripts/protocol-bench/run-local.mjs",
     "bench:protocol:suite:lan": "node scripts/protocol-bench/run-lan.mjs",
     "bench:protocol:suite:wan": "node scripts/protocol-bench/run-wan.mjs",
+    "bench:opt-ablation": "node scripts/protocol-bench/run-optimization-ablation.mjs",
     "bench:protocol:transfer-matrix": "node scripts/protocol-bench/run-transfer-matrix.mjs",
     "bench:protocol:transfer-matrix:lan:detached": "bash scripts/protocol-bench/run-transfer-matrix-lan-detached.sh",
     "bench:protocol:transfer-matrix:lan:pull": "bash scripts/protocol-bench/pull-transfer-matrix-lan.sh",
