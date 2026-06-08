@@ -41,7 +41,7 @@ Cold `readChatTimeline` + `getReplayContext` after `markReplayStale` at chat che
 
 ### D. Transfer matrix (Nearbytes vs baselines)
 
-`bench:protocol:transfer-matrix` measures Nearbytes file transfer, `scp`, and `rsync` in one orchestrated report for selectable topology categories: `local`, `lan`, `wan`, or a comma-separated combination. Each category runs in two phases: **phase 1** — Nearbytes for every case; **phase 2** — reference baselines (`nc`/`cp` on loopback; `scp`/`rsync` on LAN/WAN). Baselines never run concurrently with Nearbytes peers so measurements are paired without bandwidth contention.
+`bench:protocol:transfer-matrix` measures Nearbytes file transfer, `scp`, and `rsync` in one orchestrated report for selectable topology categories: `local`, `lan`, `wan`, or a comma-separated combination. Each category runs in two phases: **phase 1** — Nearbytes for every case; **phase 2** — reference baselines (`nc`/`cp` on loopback; `nc`/`scp`/`rsync` on LAN; `scp`/`rsync` on WAN). LAN `nc` is the raw-TCP wire ceiling (alice→bob VLAN IP). Baselines never run concurrently with Nearbytes peers so measurements are paired without bandwidth contention.
 
 **Topology (non-negotiable):**
 

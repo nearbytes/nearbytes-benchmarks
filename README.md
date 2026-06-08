@@ -38,7 +38,7 @@ The transfer matrix compares Nearbytes file transfer against reference tools on 
 | Topology | Peers | Discovery | Baselines |
 |----------|-------|-----------|-----------|
 | **local** | Loopback alice + bob on this machine | loopback | `nc`, `cp` |
-| **lan** | Two lab hosts on the same VLAN | mDNS | `scp`, `rsync` (run from alice) |
+| **lan** | Two lab hosts on the same VLAN | mDNS | `nc` (raw TCP wire), `scp`, `rsync` (run from alice) |
 | **wan** | This Mac (alice) ↔ remote bob | DHT (Hyperswarm) | `scp`, `rsync` |
 
 Each case is a 64–128 MiB payload shape (burst and sequential). The runner repeats until the **target wall time** (default 30s) is reached, then records goodput in Mb/s. Nearbytes and baselines never run concurrently.

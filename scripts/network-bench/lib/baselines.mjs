@@ -2,7 +2,8 @@
  * Reference baselines for the three categories.
  *
  *   local:  nc (raw TCP wire)         + cp (filesystem)
- *   lan/wan: scp (encrypted transfer) + rsync (delta + checksum)
+ *   lan:     nc (raw TCP wire)         + scp + rsync
+ *   wan:     scp (encrypted transfer)  + rsync (delta + checksum)
  *
  * Every runner returns:
  *   { wallMs, bytes, count, files: [{ name, bytes }] }
@@ -284,6 +285,37 @@ export async function ensureAlicePayload(aliceHost, name, bytes, seed, { local =
  * The Mac is only a control plane: it spawns one SSH per measurement and
  * gets back a single integer (ns). The data path is strictly alice⇄bob LAN.
  */
+function aliceNcScript(bobHost, alicePaths) {
+  const bobIp = bobHost.ip;
+  if (!bobIp) {
+    throw new Error('bob.ip required for LAN nc baseline (raw TCP to bob on the VLAN)');
+  }
+  const bobDir = `${bobHost.workdir}/payloads-recv`;
+  const portBase = 47_000 + (Date.now() % 1000);
+  const entries = alicePaths.map((src, i) => ({
+    port: portBase + i,
+    src: shellQuote(src),
+    dst: `${bobDir}/nc-${i}.bin`,
+  }));
+  const startListeners = entries
+    .map((e) => `ssh -f -n -o StrictHostKeyChecking=accept-new ${shellQuote(bobHost.ssh)} ${shellQuote(`nc -l ${e.port} > ${e.dst}`)}`)
+    .join('\n');
+  const senderLines = entries
+    .map((e) => `nc -N ${shellQuote(bobIp)} ${e.port} < ${e.src} &`)
+    .join('\n');
+  return `
+set -e
+ssh -n -o StrictHostKeyChecking=accept-new ${shellQuote(bobHost.ssh)} ${shellQuote(`mkdir -p ${bobDir} && rm -f ${bobDir}/nc-*.bin`)} >/dev/null
+${startListeners}
+sleep 0.3
+T0=$(date +%s%N)
+${senderLines}
+wait
+T1=$(date +%s%N)
+echo "WALL_NS=$((T1-T0))"
+`;
+}
+
 function alicePushScript(bobHost, alicePaths, tool) {
   const bobDir = `${bobHost.workdir}/payloads-recv`;
   let body;
@@ -313,7 +345,9 @@ async function parseWallNs(stdout) {
 }
 
 async function alicePushTimed(aliceHost, bobHost, alicePaths, tool, { aliceLocal = false } = {}) {
-  const script = alicePushScript(bobHost, alicePaths, tool);
+  const script = tool === 'nc'
+    ? aliceNcScript(bobHost, alicePaths)
+    : alicePushScript(bobHost, alicePaths, tool);
   if (aliceLocal || !aliceHost.ssh) {
     return new Promise((resolve, reject) => {
       const child = spawn('bash', ['-s'], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -335,6 +369,11 @@ async function alicePushTimed(aliceHost, bobHost, alicePaths, tool, { aliceLocal
   }
   const { stdout } = await sshRun(aliceHost.ssh, 'bash -s', { stdin: script, timeoutMs: 600_000 });
   return parseWallNs(stdout);
+}
+
+export async function lanNc(aliceHost, bobHost, alicePaths, opts = {}) {
+  const wallMs = await alicePushTimed(aliceHost, bobHost, alicePaths, 'nc', opts);
+  return { wallMs, count: alicePaths.length };
 }
 
 export async function lanScp(aliceHost, bobHost, alicePaths, opts = {}) {

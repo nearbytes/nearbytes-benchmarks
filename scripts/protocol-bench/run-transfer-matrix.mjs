@@ -21,6 +21,8 @@ import { DEFAULT_BENCH_TARGET_MS } from '../lib/local-config.mjs';
 import { loadHosts, requireLan, requireWan } from '../network-bench/lib/hosts.mjs';
 import {
   ensureAlicePayload,
+  lanNc,
+  lanNc,
   lanRsync,
   lanScp,
   localCp,
@@ -45,7 +47,7 @@ const WAN_DISCOVERY = 'dht';
 /** Reference baselines per topology (not nearbytes — that is always measured). */
 const BASELINE_SYSTEMS = {
   local: ['nc', 'cp'],
-  lan: ['scp', 'rsync'],
+  lan: ['nc', 'scp', 'rsync'],
   wan: ['scp', 'rsync'],
 };
 
@@ -517,9 +519,11 @@ async function remoteBaseline(system, category, hosts, plan) {
       for (let i = 0; i < plan.count; i++) {
         paths.push(await ensureAlicePayload(lan.alice, `${plan.label}-${system}-${rep}-${i}.bin`, plan.bytes, rep * 1000 + i + 1, pushOpts));
       }
-      const wall = system === 'scp'
-        ? await lanScp(lan.alice, lan.bob, paths, pushOpts)
-        : await lanRsync(lan.alice, lan.bob, paths, pushOpts);
+      const wall = system === 'nc'
+        ? await lanNc(lan.alice, lan.bob, paths, pushOpts)
+        : system === 'scp'
+          ? await lanScp(lan.alice, lan.bob, paths, pushOpts)
+          : await lanRsync(lan.alice, lan.bob, paths, pushOpts);
       const bytes = plan.count * plan.bytes;
       return { wallMs: wall.wallMs, bytes, goodputMbps: mbps(bytes, wall.wallMs) };
     });

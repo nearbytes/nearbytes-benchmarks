@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ensureRemoteWorkspace } from '../network-bench/lib/deploy.mjs';
-import { ensureAlicePayload, lanRsync, lanScp } from '../network-bench/lib/baselines.mjs';
+import { ensureAlicePayload, lanNc, lanRsync, lanScp } from '../network-bench/lib/baselines.mjs';
 import { loadHosts, requireLan } from '../network-bench/lib/hosts.mjs';
 import { shellQuote, sshRun, SshMaster } from '../network-bench/lib/remote.mjs';
 import { ProtocolPair, ensureProtocolPeerBuilt, killStrayProtocolPeers } from './lib/protocol-pair.mjs';
@@ -135,12 +135,14 @@ async function main() {
       pushOpts,
     );
 
-    for (const tool of ['scp', 'rsync']) {
+    for (const tool of ['nc', 'scp', 'rsync']) {
       log(`── ${tool} ──`);
       const t0 = Date.now();
-      const wall = tool === 'scp'
-        ? await lanScp(lan.alice, lan.bob, [payloadPath], pushOpts)
-        : await lanRsync(lan.alice, lan.bob, [payloadPath], pushOpts);
+      const wall = tool === 'nc'
+        ? await lanNc(lan.alice, lan.bob, [payloadPath], pushOpts)
+        : tool === 'scp'
+          ? await lanScp(lan.alice, lan.bob, [payloadPath], pushOpts)
+          : await lanRsync(lan.alice, lan.bob, [payloadPath], pushOpts);
       const elapsed = Date.now() - t0;
       if (wall.wallMs > limitMs) {
         throw new Error(`${tool} exceeded ${limitMs}ms wall=${wall.wallMs}`);
