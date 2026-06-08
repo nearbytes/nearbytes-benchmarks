@@ -79,6 +79,32 @@ function checkTransferMatrix(dataRoot, errors) {
   }
 }
 
+function readNetworkReport(dataRoot, cat) {
+  return (
+    readJson(join(dataRoot, 'network', `${cat}-results.json`)) ??
+    readJson(join(dataRoot, 'network', `${cat}.json`))
+  );
+}
+
+function checkNetworkSmallLatency(dataRoot, errors) {
+  for (const cat of ['local', 'lan', 'wan']) {
+    const net = readNetworkReport(dataRoot, cat);
+    if (!net) {
+      errors.push(`missing network/${cat}.json (small-payload latency figure)`);
+      continue;
+    }
+    const sc = net.sizeClasses?.find((x) => x.sizeClass === 'small');
+    if (!sc?.systems || Object.keys(sc.systems).length < 2) {
+      errors.push(`network/${cat}.json: missing small sizeClass systems`);
+      continue;
+    }
+    const nb = sc.systems.nearbytes?.wallMs?.p50;
+    if (!Number.isFinite(nb)) {
+      errors.push(`network/${cat}.json: missing nearbytes small wallMs`);
+    }
+  }
+}
+
 function checkOptAblation(dataRoot, errors) {
   const path = join(dataRoot, 'protocol', 'opt-ablation-local.json');
   if (!existsSync(path)) {
@@ -98,6 +124,7 @@ function checkOptAblation(dataRoot, errors) {
 export function validateBenchData(dataRoot) {
   const errors = [];
   checkTransferMatrix(dataRoot, errors);
+  checkNetworkSmallLatency(dataRoot, errors);
   checkOptAblation(dataRoot, errors);
   return { ok: errors.length === 0, errors };
 }
