@@ -15,22 +15,19 @@ export const SIZES = {
   local: {
     small: { count: 1, bytes: 64 * 1024 },
     large: { count: 1, bytes: 128 * 1024 * 1024 },
-    burst: { count: 16, bytes: 8 * 1024 * 1024 },
+    burst: { count: 16, bytes: 4 * 1024 * 1024 },
   },
   lan: {
     small: { count: 1, bytes: 64 * 1024 },
     large: { count: 1, bytes: 128 * 1024 * 1024 },
-    burst: { count: 16, bytes: 8 * 1024 * 1024 },
+    burst: { count: 128, bytes: 512 * 1024 },
   },
   wan: {
-    // Single-file sizes stay strictly below 8 MiB: above that boundary the
-    // current hyperswarm/noise transport path hits a buffer-bounds bug
-    // in streamx during reassembly over a real public-Internet RTT
-    // (offset out of bounds in NoiseSecretStream data handler). Filed
-    // separately — irrelevant for LAN/mDNS where the bug does not appear.
     small: { count: 1, bytes: 64 * 1024 },
-    large: { count: 1, bytes: 7 * 1024 * 1024 },
-    burst: { count: 8, bytes: 1024 * 1024 },
+    // Throughput rows (large/burst) are measured via transfer-matrix (128 MiB stream;
+    // 64×1 MiB burst). Network-bench small stays 64 KiB for latency only.
+    large: { count: 1, bytes: 128 * 1024 * 1024 },
+    burst: { count: 64, bytes: 1024 * 1024 },
   },
 };
 
