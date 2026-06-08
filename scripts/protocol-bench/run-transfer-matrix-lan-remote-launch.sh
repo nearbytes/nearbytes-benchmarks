@@ -33,6 +33,8 @@ rsync -az \
   "$ROOT/scripts/protocol-bench/" "$ALICE:$NB/scripts/protocol-bench/"
 rsync -az \
   "$ROOT/scripts/network-bench/lib/" "$ALICE:$NB/scripts/network-bench/lib/"
+rsync -az \
+  "$ROOT/scripts/lib/" "$ALICE:$NB/scripts/lib/"
 scp -q "$HOSTS_JSON" "$ALICE:$NB/config/local.json"
 
 echo "Ensuring alice can SSH to bob (cross-host)…"
