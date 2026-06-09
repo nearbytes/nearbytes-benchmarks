@@ -358,7 +358,8 @@ function isRetryableNearbytesError(err) {
 
 async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}) {
   let activePair = pair;
-  const freshPairEachRep = category === 'local' && restartPair;
+  // Fresh pair each rep on loopback/LAN keeps activity logs small; WAN skips (DHT attach is costly).
+  const freshPairEachRep = restartPair && (category === 'local' || category === 'lan');
   const measured = await measureRepeated('nearbytes', plan, async (rep) => {
     if (freshPairEachRep && rep > 0) {
       await activePair.stop().catch(() => {});
