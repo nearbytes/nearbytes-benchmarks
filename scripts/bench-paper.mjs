@@ -106,25 +106,24 @@ async function main() {
       const wanTmFull = join(PROTO, 'transfer-matrix-wan-full.json');
       const optOut = join(PROTO, 'opt-ablation-local.json');
 
-      const wave1 = [];
+      // Local harnesses share protocol-peer processes — run sequentially to avoid port/CPU contention.
       if (!isFreshFile(join(NET, 'local-results.json'))) {
-        wave1.push(spawnJob('node', ['scripts/network-bench/run-local.mjs'], {
+        await spawnJob('node', ['scripts/network-bench/run-local.mjs'], {
           label: 'C2 network local (small)',
           env: NET_SMALL,
-        }));
+        });
       } else {
         console.log('skip network local (fresh)');
       }
 
       if (!isFreshTransferMatrix(localTmFull) && !isFreshFile(localTmOut)) {
-        wave1.push(
-          spawnJob('node', [
-            'scripts/protocol-bench/run-transfer-matrix.mjs',
-            '--',
-            '--categories', 'local',
-            '--out', localTmOut,
-          ], { label: 'C3–C5 transfer-matrix local' }).then(() => promote('transfer-matrix-local.json', 'transfer-matrix-local-full.json')),
-        );
+        await spawnJob('node', [
+          'scripts/protocol-bench/run-transfer-matrix.mjs',
+          '--',
+          '--categories', 'local',
+          '--out', localTmOut,
+        ], { label: 'C3–C5 transfer-matrix local' });
+        await promote('transfer-matrix-local.json', 'transfer-matrix-local-full.json');
       } else {
         console.log('skip transfer-matrix local (fresh)');
         if (!existsSync(localTmFull) && existsSync(localTmOut)) {
@@ -133,14 +132,12 @@ async function main() {
       }
 
       if (!isFreshFile(optOut)) {
-        wave1.push(spawnJob('node', ['scripts/protocol-bench/run-optimization-ablation.mjs', '--out', optOut], {
+        await spawnJob('node', ['scripts/protocol-bench/run-optimization-ablation.mjs', '--out', optOut], {
           label: 'C6 opt-ablation',
-        }));
+        });
       } else {
         console.log('skip opt-ablation (fresh)');
       }
-
-      await Promise.all(wave1);
 
       if (!existsSync(localTmFull) && existsSync(localTmOut)) {
         await promote('transfer-matrix-local.json', 'transfer-matrix-local-full.json');
