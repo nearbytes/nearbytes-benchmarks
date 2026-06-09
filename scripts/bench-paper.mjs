@@ -2,18 +2,26 @@
 /**
  * Paper evaluation pipeline — parallel where safe, skip fresh artifacts.
  *
- *   yarn bench:paper
+ *   yarn bench:paper                              # ≤60s hard cap per measurement (bench-timing.mjs)
  *   NEARBYTES_PAPER_BENCH_SMOKE=1 yarn bench:paper
  *   NEARBYTES_PAPER_FORCE=1 yarn bench:paper        # ignore freshness
  *   NEARBYTES_PAPER_SKIP_LAN=1 / SKIP_WAN=1         # skip remote categories
  */
 import { spawn } from 'node:child_process';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { validateBenchData } from './lib/bench-sanity.mjs';
 import { isFreshFile, isFreshTransferMatrix, isForced } from './lib/bench-fresh.mjs';
+import {
+  ablationArgv,
+  ablationEnv,
+  profileLabel,
+  transferMatrixArgv,
+  transferMatrixEnv,
+} from './lib/paper-bench-profile.mjs';
+import { killStrayProtocolPeers } from './protocol-bench/lib/protocol-pair.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..');
@@ -30,10 +38,15 @@ const PAPER_ROOT = [
   resolve(REPO, '..', '..', 'NEARBYTES', 'NEARBYTES-PAPERS', 'paper-nearbytes-hypercore'),
 ].find((p) => existsSync(join(p, 'paper.tex')));
 
+const ABL_ENV = ablationEnv();
+const tmEnv = (cat) => transferMatrixEnv(cat);
+const tmArgs = (cat) => transferMatrixArgv(cat);
+
 const manifest = {
   startedAt: new Date().toISOString(),
   smoke: SMOKE,
   force: isForced(),
+  profile: profileLabel(),
   phases: [],
 };
 
@@ -63,24 +76,51 @@ async function promote(srcName, dstName) {
   console.log(`promoted ${srcName} → ${dstName}`);
 }
 
-async function ensureLanMatrix() {
+async function promoteLanFromPull() {
+  const metaPath = join(REPO, '.local', 'tmp', 'transfer_lan_run.meta');
+  if (!existsSync(metaPath)) return false;
+  const meta = await readFile(metaPath, 'utf8');
+  const localOut = meta.split('\n').map((l) => l.match(/^local_out=(.+)$/)).find(Boolean)?.[1];
+  if (!localOut || !existsSync(localOut)) return false;
   const lanFull = join(PROTO, 'transfer-matrix-lan-full.json');
-  if (isFreshTransferMatrix(lanFull)) {
+  await copyFile(localOut, lanFull);
+  await copyFile(localOut, join(PROTO, 'transfer-matrix-lan.json'));
+  console.log(`promoted ${localOut} → transfer-matrix-lan-full.json`);
+  return true;
+}
+
+async function ensureLanMatrix(needRun) {
+  const lanFull = join(PROTO, 'transfer-matrix-lan-full.json');
+  if (!needRun && isFreshTransferMatrix(lanFull)) {
     console.log('skip LAN transfer-matrix (fresh complete)');
     return;
   }
-  if (!SKIP_LAN) {
-    try {
-      await spawnJob('bash', ['scripts/protocol-bench/pull-transfer-matrix-lan.sh'], {
-        label: 'C3–C5 transfer-matrix LAN pull',
-        required: false,
-      });
-    } catch {
-      /* pull optional */
+  if (SKIP_LAN) {
+    if (!existsSync(lanFull)) {
+      throw new Error(`missing ${lanFull} — set NEARBYTES_PAPER_SKIP_LAN=0 or provide stale data`);
     }
+    return;
   }
-  if (!existsSync(lanFull)) {
-    throw new Error(`missing ${lanFull} — run bench:protocol:lan on pc-ciancia or set NEARBYTES_PAPER_SKIP_LAN=1 with stale data`);
+  if (needRun) {
+    await spawnJob('bash', ['scripts/protocol-bench/run-transfer-matrix-lan-detached.sh'], {
+      label: 'C3–C5 transfer-matrix LAN launch',
+      env: {
+        ...tmEnv('lan'),
+        NEARBYTES_LAN_SKIP_DEPLOY: '1',
+        NEARBYTES_LAN_REMOTE_MAX_ATTEMPTS: '1',
+      },
+    });
+    await spawnJob('bash', ['scripts/protocol-bench/wait-transfer-matrix-lan-remote.sh'], {
+      label: 'C3–C5 transfer-matrix LAN wait',
+      env: { NEARBYTES_LAN_POLL_SEC: '15', NEARBYTES_LAN_WAIT_MAX_SEC: '900' },
+    });
+  }
+  await spawnJob('bash', ['scripts/protocol-bench/pull-transfer-matrix-lan.sh'], {
+    label: 'C3–C5 transfer-matrix LAN pull',
+    required: false,
+  });
+  if (!await promoteLanFromPull() && !existsSync(lanFull)) {
+    throw new Error(`missing ${lanFull} — LAN pull failed or run incomplete`);
   }
 }
 
@@ -98,6 +138,11 @@ async function main() {
     await mkdir(NET, { recursive: true });
 
     if (!SMOKE) {
+      if (process.env.NEARBYTES_PAPER_BENCH_FULL === '1') {
+        console.warn('NEARBYTES_PAPER_BENCH_FULL is deprecated — hard 60s cap always applies (bench-timing.mjs)');
+      }
+      console.log(`bench profile: ${profileLabel()}`);
+      killStrayProtocolPeers();
       await spawnJob('yarn', ['build'], { label: 'build' });
 
       const localTmOut = join(PROTO, 'transfer-matrix-local.json');
@@ -122,7 +167,8 @@ async function main() {
           '--',
           '--categories', 'local',
           '--out', localTmOut,
-        ], { label: 'C3–C5 transfer-matrix local' });
+          ...tmArgs('local'),
+        ], { label: 'C3–C5 transfer-matrix local', env: tmEnv('local') });
         await promote('transfer-matrix-local.json', 'transfer-matrix-local-full.json');
       } else {
         console.log('skip transfer-matrix local (fresh)');
@@ -132,8 +178,9 @@ async function main() {
       }
 
       if (!isFreshFile(optOut)) {
-        await spawnJob('node', ['scripts/protocol-bench/run-optimization-ablation.mjs', '--out', optOut], {
+        await spawnJob('node', ['scripts/protocol-bench/run-optimization-ablation.mjs', ...ablationArgv(optOut)], {
           label: 'C6 opt-ablation',
+          env: ABL_ENV,
         });
       } else {
         console.log('skip opt-ablation (fresh)');
@@ -185,7 +232,8 @@ async function main() {
             '--categories', 'wan',
             '--skip-deploy',
             '--out', wanTmOut,
-          ], { label: 'C3–C5 transfer-matrix WAN' }).then(() => promote('transfer-matrix-wan.json', 'transfer-matrix-wan-full.json')),
+            ...tmArgs('wan'),
+          ], { label: 'C3–C5 transfer-matrix WAN', env: tmEnv('wan') }).then(() => promote('transfer-matrix-wan.json', 'transfer-matrix-wan-full.json')),
         );
       } else if (!SKIP_WAN) {
         console.log('skip transfer-matrix WAN (fresh)');
@@ -196,7 +244,7 @@ async function main() {
         await promote('transfer-matrix-wan.json', 'transfer-matrix-wan-full.json');
       }
 
-      await ensureLanMatrix();
+      await ensureLanMatrix(needLanTm);
     }
 
     const v = validateBenchData(BENCH);

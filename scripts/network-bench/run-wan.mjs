@@ -32,6 +32,7 @@ import { dirname, join, resolve } from 'node:path';
 import { collectLocalHostInfo, collectRemoteHostInfo } from './lib/hostinfo.mjs';
 import { loadHosts, requireWan } from './lib/hosts.mjs';
 import { SIZES, REPEATS, describeSize, totalBytes } from './lib/sizes.mjs';
+import { shouldTakeAnotherNetworkRep } from '../lib/bench-timing.mjs';
 import { ensureRemoteWorkspace } from './lib/deploy.mjs';
 import {
   remoteScp, remoteRsync, mkScratch, cleanScratch, prepareRemoteDir, SshMaster,
@@ -128,13 +129,18 @@ async function runSizeClass({ pair, bobHost, sshMaster, sizeClass, plan, scratch
   const perStreamAll = [];
   const bobBaselineDir = `${bobHost.workdir}/baselines-recv`;
 
+  let totalMeasuredMs = 0;
+  let measured = 0;
   for (let rep = 0; rep < repeats.warmup + repeats.measured; rep++) {
     const isWarmup = rep < repeats.warmup;
-    const tag = isWarmup ? `warmup ${rep + 1}/${repeats.warmup}` : `measured ${rep - repeats.warmup + 1}/${repeats.measured}`;
+    if (!isWarmup && measured >= repeats.measured) break;
+    if (!isWarmup && measured > 0 && !shouldTakeAnotherNetworkRep({ totalMeasuredMs })) break;
+    const tag = isWarmup ? `warmup ${rep + 1}/${repeats.warmup}` : `measured ${measured + 1}/${repeats.measured}`;
     const scratch = `${scratchBase}-${rep}`;
     await mkdir(scratch, { recursive: true });
     const files = buildFiles(plan, scratch, sizeClass);
     let line = `  ${tag.padEnd(14)} `;
+    let repWallMs = 0;
     for (const sys of systems) {
       try {
         if (sys === 'scp' || sys === 'rsync') {
@@ -145,6 +151,7 @@ async function runSizeClass({ pair, bobHost, sshMaster, sizeClass, plan, scratch
           : sys === 'rsync'
           ? { ...(await remoteRsync(files, bobHost.ssh, bobBaselineDir, { master: sshMaster })), bytes: totalBytes(plan) }
           : await runOneNearbytes(pair, plan, sizeClass === 'burst');
+        repWallMs = Math.max(repWallMs, m.wallMs);
         if (!isWarmup) {
           results[sys].push({ wallMs: m.wallMs, goodputMbps: mbps(m.bytes, m.wallMs) });
           if (sys === 'nearbytes' && m.perStream) perStreamAll.push(m.perStream);
@@ -154,6 +161,10 @@ async function runSizeClass({ pair, bobHost, sshMaster, sizeClass, plan, scratch
         line += `${sys}=FAIL  `;
         console.error(`    ${sys} failed: ${err.message}`);
       }
+    }
+    if (!isWarmup) {
+      measured++;
+      totalMeasuredMs += repWallMs;
     }
     console.log(line);
     cleanScratch(scratch);

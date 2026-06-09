@@ -258,10 +258,13 @@ async function doPublish(
 ): Promise<{
   files: { name: string; bytes: number; publishMs: number }[];
   totalWallMs: number;
+  publishStartedAt: number;
+  publishEndedAt: number;
   publishCpuMs: number;
   encodeRssBytesMax: number;
 }> {
-  const t0 = Date.now();
+  const publishStartedAt = Date.now();
+  const t0 = publishStartedAt;
   const cpu0 = process.cpuUsage();
   const mem = trackRssMax();
   const specs = cmd.files.map((f) => ({ ...f, buf: null as Buffer | null }));
@@ -286,11 +289,38 @@ async function doPublish(
     }
   }
   mem.sample();
+  const publishEndedAt = Date.now();
   return {
     files: per,
-    totalWallMs: Date.now() - t0,
+    totalWallMs: publishEndedAt - t0,
+    publishStartedAt,
+    publishEndedAt,
     publishCpuMs: cpuMsDelta(cpu0),
     encodeRssBytesMax: mem.maxBytes(),
+  };
+}
+
+interface RecvPhaseAnchors {
+  firstByteAt: number | null;
+  lastByteAt: number | null;
+  diskDrainDoneAt: number | null;
+  hashDoneAt: number | null;
+  renameDoneAt: number | null;
+}
+
+function recvPhasesFromMarker(fields: Record<string, unknown>): RecvPhaseAnchors {
+  const pick = (k: string): number | null => {
+    const v = fields[k];
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    firstByteAt: pick('firstByteAt'),
+    lastByteAt: pick('lastByteAt'),
+    diskDrainDoneAt: pick('diskDrainDoneAt'),
+    hashDoneAt: pick('hashDoneAt'),
+    renameDoneAt: pick('renameDoneAt'),
   };
 }
 
@@ -298,7 +328,7 @@ async function doExpect(
   rt: EngineRuntime,
   cmd: ExpectCommand,
 ): Promise<{
-  files: { name: string; bytes: number; receivedMs: number }[];
+  files: { name: string; bytes: number; receivedMs: number; phases: RecvPhaseAnchors }[];
   wallMs: number;
   receiveCpuMs: number;
   decodeRssBytesMax: number;
@@ -308,7 +338,7 @@ async function doExpect(
   const mem = trackRssMax();
   const expected = cmd.files.map((f) => ({ ...f }));
   const remaining: typeof expected = [...expected];
-  const captured: { bytes: number; receivedMs: number }[] = [];
+  const captured: { bytes: number; receivedMs: number; phases: RecvPhaseAnchors }[] = [];
   const { tail } = await createMarkerTail(rt.skeleton.log);
   const consumedMarkers = new Set<number>();
   const deadline = Date.now() + cmd.timeoutMs;
@@ -329,7 +359,11 @@ async function doExpect(
       if (idx < 0) continue;
       consumedMarkers.add(i);
       remaining.splice(idx, 1);
-      captured.push({ bytes, receivedMs: Date.now() - t0 });
+      captured.push({
+        bytes,
+        receivedMs: Date.now() - t0,
+        phases: recvPhasesFromMarker(fields),
+      });
     }
     if (remaining.length === 0) break;
     await new Promise((r) => setTimeout(r, 10));
@@ -345,6 +379,7 @@ async function doExpect(
       name: expected[i].name,
       bytes: c.bytes,
       receivedMs: c.receivedMs,
+      phases: c.phases,
     })),
     wallMs: Date.now() - t0,
     receiveCpuMs: cpuMsDelta(cpu0),

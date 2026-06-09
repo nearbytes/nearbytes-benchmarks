@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 META="$ROOT/.local/tmp/transfer_lan_run.meta"
 INTERVAL="${NEARBYTES_LAN_POLL_SEC:-30}"
+MAX_SEC="${NEARBYTES_LAN_WAIT_MAX_SEC:-0}"
+START_TS="$(date +%s)"
 
 if [[ ! -f "$META" ]]; then
   echo "No LAN run meta at $META" >&2
@@ -22,8 +24,16 @@ while true; do
       echo "status=complete" >> "$META"
       exit 0
     fi
+    if [[ "$remote_status" == "status=failed" ]]; then
+      echo "remote LAN matrix failed — see ${REMOTE_LOG} on ${ORCHESTRATOR}" >&2
+      exit 1
+    fi
   else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] SSH probe failed — VPN may be down; will retry"
+  fi
+  if [[ "$MAX_SEC" -gt 0 ]] && [[ "$(($(date +%s) - START_TS))" -ge "$MAX_SEC" ]]; then
+    echo "LAN wait exceeded ${MAX_SEC}s" >&2
+    exit 1
   fi
   sleep "$INTERVAL"
 done

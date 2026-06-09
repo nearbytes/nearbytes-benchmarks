@@ -1,0 +1,15 @@
+---
+description: Benchmark wall-clock hard cap — always enforce 60s per measurement budget
+globs:
+  - "**/*"
+alwaysApply: false
+---
+
+# Benchmark timing (hard policy)
+
+**Each benchmark measurement budget is 60 seconds wall time, never more.**
+
+- Applies to transfer-matrix, opt-ablation, and network-bench repeat loops (`sum(rep.wallMs) < 60_000` per workload × system).
+- Default and maximum `targetMs` / `NEARBYTES_TRANSFER_TARGET_MS` / `bench.targetMs` = **60000**. Values above are **clamped** in `scripts/lib/bench-timing.mjs`.
+- Do **not** add `NEARBYTES_PAPER_BENCH_FULL` or multi-minute targets. `yarn bench:paper` uses the same 60s cap.
+- Single slow trials (e.g. WAN 128 MiB) may use one rep when one rep exceeds 60s — that is expected.

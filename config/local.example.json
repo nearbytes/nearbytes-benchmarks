@@ -44,6 +44,6 @@
     "reportFiguresDir": ".local/bench/figures"
   },
   "bench": {
-    "targetMs": 30000
+    "targetMs": 60000
   }
 }

@@ -9,6 +9,7 @@ import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_BENCH_TARGET_MS, clampBenchTargetMs } from './bench-timing.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -16,7 +17,7 @@ export const LOCAL_CONFIG_PATH = resolve(ROOT, 'config', 'local.json');
 export const LOCAL_CONFIG_EXAMPLE = resolve(ROOT, 'config', 'local.example.json');
 export const LEGACY_HOSTS_PATH = resolve(ROOT, 'config', 'bench-hosts.local.json');
 export const LEGACY_E2E_PATH = resolve(ROOT, 'config', 'e2e.local.json');
-export const DEFAULT_BENCH_TARGET_MS = 30_000;
+export { DEFAULT_BENCH_TARGET_MS };
 
 async function readable(path) {
   try {
@@ -76,9 +77,9 @@ function e2eFromRaw(raw, hosts) {
 
 export function benchTargetMs(raw) {
   const fromCfg = raw?.bench?.targetMs ?? raw?.targetMs;
-  if (fromCfg != null) return Number(fromCfg);
+  if (fromCfg != null) return clampBenchTargetMs(fromCfg);
   const fromEnv = process.env.NEARBYTES_TRANSFER_TARGET_MS;
-  if (fromEnv != null && fromEnv !== '') return Number(fromEnv);
+  if (fromEnv != null && fromEnv !== '') return clampBenchTargetMs(fromEnv);
   return DEFAULT_BENCH_TARGET_MS;
 }
 

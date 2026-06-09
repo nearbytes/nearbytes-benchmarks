@@ -1,7 +1,7 @@
 /**
  * Payload size triplets per category, tuned so each category's full sweep
  * (small + large + burst) × (nearbytes + 2 baselines) × repeats finishes
- * within roughly 60–120 seconds on the target topology.
+ * within the hard 60 s measurement cap (bench-timing.mjs).
  *
  *   small  — single tiny file; isolates connection setup / first-byte latency
  *   large  — single bulk file; isolates steady-state goodput
@@ -32,9 +32,9 @@ export const SIZES = {
 };
 
 export const REPEATS = {
-  local: { warmup: 1, measured: 5 },
-  lan: { warmup: 1, measured: 5 },
-  wan: { warmup: 1, measured: 3 },
+  local: { warmup: 1, measured: 3 },
+  lan: { warmup: 1, measured: 3 },
+  wan: { warmup: 1, measured: 2 },
 };
 
 export function totalBytes(plan) {

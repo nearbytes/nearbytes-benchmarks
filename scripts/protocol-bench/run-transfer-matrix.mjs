@@ -2,7 +2,7 @@
 /**
  * Transfer matrix — topology is fixed per category:
  *
- *   local — loopback peers on the orchestrator (nc/cp baselines)
+ *   local — loopback peers on the orchestrator (nc/cat baselines)
  *   lan   — CNR alice ↔ CNR bob on the lab VLAN, mDNS discovery only (no DHT)
  *   wan   — Mac alice ↔ CNR bob over the public internet, DHT discovery only (no mDNS)
  *
@@ -18,13 +18,15 @@ import { fileURLToPath } from 'node:url';
 
 import { ensureRemoteWorkspace } from '../network-bench/lib/deploy.mjs';
 import { DEFAULT_BENCH_TARGET_MS } from '../lib/local-config.mjs';
+import { resolveBenchRepeatBudget, shouldTakeAnotherBenchRep } from '../lib/bench-timing.mjs';
+import { aggregateTimelines } from '../lib/phase-timeline.mjs';
 import { loadHosts, requireLan, requireWan } from '../network-bench/lib/hosts.mjs';
 import {
   ensureAlicePayload,
   lanNc,
   lanRsync,
   lanScp,
-  localCp,
+  localCat,
   localNc,
   prepareRemoteDir,
   remoteRsync,
@@ -49,7 +51,7 @@ const WAN_DISCOVERY = 'dht';
 
 /** Reference baselines per topology (not nearbytes — that is always measured). */
 const BASELINE_SYSTEMS = {
-  local: ['nc', 'cp'],
+  local: ['nc', 'cat'],
   lan: ['nc', 'scp', 'rsync'],
   wan: ['scp', 'rsync'],
 };
@@ -68,10 +70,11 @@ const arg = (name, fallback) => {
 };
 const hasArg = (name) => process.argv.includes(name);
 const categories = arg('--categories', 'local').split(',').map((s) => s.trim()).filter(Boolean);
-const targetMs = Number(
-  arg('--target-ms', process.env.NEARBYTES_TRANSFER_TARGET_MS ?? String(DEFAULT_BENCH_TARGET_MS)),
-);
-const maxRepeats = Number(arg('--max-repeats', process.env.NEARBYTES_TRANSFER_MAX_REPEATS ?? '8'));
+const { targetMs, maxRepeats } = resolveBenchRepeatBudget({
+  targetMs: arg('--target-ms', process.env.NEARBYTES_TRANSFER_TARGET_MS ?? String(DEFAULT_BENCH_TARGET_MS)),
+  maxRepeats: arg('--max-repeats', process.env.NEARBYTES_TRANSFER_MAX_REPEATS ?? '8'),
+  label: 'transfer-matrix',
+});
 const outPath = arg('--out', join(REPO_ROOT, '.local/bench/protocol/transfer-matrix-results.json'));
 const skipDeploy = hasArg('--skip-deploy');
 const nearbytesOnly = hasArg('--nearbytes-only');
@@ -165,8 +168,8 @@ function nearbytesTimeoutMs(category, plan) {
   const totalMiB = (plan.count * plan.bytes) / MIB;
   if (category === 'lan') {
     const transferBudget = Math.ceil(totalMiB / 50) * 2000 + 5000;
-    const burstSlack = plan.burst ? Math.min(15_000, plan.count * 75) : 0;
-    return Math.min(45_000, Math.max(15_000, transferBudget + burstSlack));
+    const burstSlack = plan.burst ? Math.min(25_000, plan.count * 120) : 0;
+    return Math.min(60_000, Math.max(25_000, transferBudget + burstSlack));
   }
   if (category === 'local') {
     return Math.min(120_000, Math.max(30_000, totalMiB * 2000 + 15_000));
@@ -235,7 +238,7 @@ async function measureRepeated(system, plan, runOnce) {
   const runs = [];
   let totalMs = 0;
   let totalBytes = 0;
-  while (runs.length < maxRepeats && totalMs < targetMs) {
+  while (shouldTakeAnotherBenchRep({ runs, totalMs, targetMs, maxRepeats })) {
     const r = await runOnce(runs.length);
     runs.push(r);
     totalMs += r.wallMs;
@@ -381,6 +384,7 @@ async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}
           bytes: r.bytes,
           goodputMbps: r.goodputMbps,
           publishWallMs: r.publishWallMs,
+          timeline: r.timeline,
           encode: r.encode,
           decode: r.decode,
         };
@@ -398,7 +402,9 @@ async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}
     throw lastErr ?? new Error(`nearbytes ${plan.label} rep ${rep + 1} failed`);
   });
   const resources = aggregateNearbytesResources(measured.runs);
-  return { ...measured, friendSessionMs: activePair.friendMs, resources };
+  const timelines = measured.runs.map((r) => r.timeline).filter(Boolean);
+  const timelineAgg = timelines.length ? aggregateTimelines(timelines) : null;
+  return { ...measured, friendSessionMs: activePair.friendMs, resources, timelineAgg };
 }
 
 function selectedCases() {
@@ -500,7 +506,7 @@ async function localBaseline(system, plan) {
     const { dir, files } = makeLocalFiles(plan, `${system}-${plan.label}-${rep}`);
     const recv = localScratch('baseline', `${system}-${plan.label}-${rep}-recv`);
     try {
-      const t = system === 'nc' ? await localNc(files, recv) : await localCp(files, recv);
+      const t = system === 'nc' ? await localNc(files, recv) : await localCat(files, recv);
       log(`${system} ${plan.label} rep ${rep + 1} — ${mbps(t.bytes, t.wallMs)} Mb/s wall=${t.wallMs}ms`);
       return { wallMs: t.wallMs, bytes: t.bytes, goodputMbps: mbps(t.bytes, t.wallMs) };
     } finally {

@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { REMOTE_NODE_BIN } from '../../network-bench/lib/deploy.mjs';
 import { optEnabled, optEnvShell } from '../../lib/optimization-flags.mjs';
+import { buildPhaseTimeline } from '../../lib/phase-timeline.mjs';
 import { startResourceMonitor, summarize } from '../../network-bench/lib/resmon.mjs';
 
 function overlapExpectEnabled() {
@@ -275,12 +276,21 @@ export class ProtocolPair {
       monAlice?.stop().catch(() => null) ?? null,
       monBob?.stop().catch(() => null) ?? null,
     ]);
+    const publishStartedAt = publish.publishStartedAt ?? Date.now() - publish.totalWallMs;
+    const recvPhases = expect.files.map((f) => f.phases).filter(Boolean);
+    const timeline = buildPhaseTimeline({
+      publishStartedAt,
+      publishWallMs: publish.totalWallMs,
+      recvPhases,
+    });
     return {
       wallMs: lastRecv,
       bytes,
       count: files.length,
       publishWallMs: publish.totalWallMs,
+      publishStartedAt,
       goodputMbps: bytes > 0 && lastRecv > 0 ? Number(((bytes * 8) / lastRecv / 1000).toFixed(2)) : 0,
+      timeline,
       encode: {
         publishCpuMs: publish.publishCpuMs,
         encodeRssBytesMax: publish.encodeRssBytesMax,

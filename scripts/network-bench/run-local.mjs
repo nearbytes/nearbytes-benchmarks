@@ -7,7 +7,7 @@
  *
  * For each size class (small, large, burst) we run K measured repeats of:
  *   - nc      (raw TCP loopback, server writes to disk)
- *   - cp      (filesystem copy on the same FS)
+ *   - cat     (byte-for-byte copy; avoids APFS clonefile)
  *   - nearbytes  (end-to-end sync, encrypt + hash + journal + store)
  *
  * One discarded warmup run per system primes page cache + V8. The
@@ -25,9 +25,10 @@ import { dirname, join, resolve } from 'node:path';
 
 import { collectLocalHostInfo } from './lib/hostinfo.mjs';
 import { SIZES, REPEATS, describeSize, totalBytes, formatBytes } from './lib/sizes.mjs';
+import { shouldTakeAnotherNetworkRep } from '../lib/bench-timing.mjs';
 import { writeDeterministicPayload } from './lib/payload.mjs';
 import {
-  localNc, localCp, mkScratch, cleanScratch,
+  localNc, localCat, mkScratch, cleanScratch,
 } from './lib/baselines.mjs';
 import { NearbytesPair, ensurePeerBuilt } from './lib/nearbytes-pair.mjs';
 
@@ -83,13 +84,13 @@ function printSummary(report) {
     `  friend session (one-time): alice ${report.friendSessionMs?.alice ?? '?'} ms · bob ${report.friendSessionMs?.bob ?? '?'} ms\n`,
   );
   const hdr =
-    '  Class          │ nc/cp (E2E)      │ nearbytes E2E    │ publish (alice)  │ wire (bob)       │ xfer after pub';
+    '  Class          │ nc/cat (E2E)     │ nearbytes E2E    │ publish (alice)  │ wire (bob)       │ xfer after pub';
   console.log(hdr);
   console.log('  ' + '─'.repeat(hdr.length - 2));
   for (const sc of report.sizeClasses) {
     const label = `${sc.sizeClass} (${describeSize(report.plans[sc.sizeClass])})`.padEnd(14);
     const nc = sc.systems.nc?.goodputMbps?.p50;
-    const cp = sc.systems.cp?.goodputMbps?.p50;
+    const cat = sc.systems.cat?.goodputMbps?.p50;
     const nb = sc.systems.nearbytes;
     const runs = nb?.runs ?? [];
     const pub = runs.map((r) => r.publishWallMs).filter(Number.isFinite);
@@ -102,7 +103,7 @@ function printSummary(report) {
     const pubMbpsP50 = quantiles(xferRuns.map((d) => d.publishMbps))?.p50;
     const wireMbpsP50 = quantiles(xferRuns.map((d) => d.wireMbps))?.p50;
     console.log(
-      `  ${label} │ nc ${fmtGbps(nc).padStart(8)} │ cp ${fmtGbps(cp).padStart(8)} │ ` +
+      `  ${label} │ nc ${fmtGbps(nc).padStart(8)} │ cat ${fmtGbps(cat).padStart(8)} │ ` +
         `E2E ${fmtGbps(e2e).padStart(8)} │ ${fmtGbps(pubMbpsP50).padStart(8)} (${fmtMs(pubP50).padStart(5)}) │ ` +
         `${fmtGbps(wireMbpsP50).padStart(8)} (${fmtMs(wireP50).padStart(5)}) │ ${fmtGbps(xferP50).padStart(8)}`,
     );
@@ -156,26 +157,32 @@ async function runOneNearbytes(pair, plan, burst) {
 async function runSizeClass({ pair, sizeClass, plan, scratchBase, repeats }) {
   console.log(`\n── ${sizeClass} (${describeSize(plan)}) ──`);
   const systems = sizeClass === 'small'
-    ? ['nc', 'cp', 'nearbytes']
-    : ['nc', 'cp', 'nearbytes'];
-  const results = { nc: [], cp: [], nearbytes: [] };
+    ? ['nc', 'cat', 'nearbytes']
+    : ['nc', 'cat', 'nearbytes'];
+  const results = { nc: [], cat: [], nearbytes: [] };
   const perStreamAll = [];
 
+  let totalMeasuredMs = 0;
+  let measured = 0;
   for (let rep = 0; rep < repeats.warmup + repeats.measured; rep++) {
     const isWarmup = rep < repeats.warmup;
+    if (!isWarmup && measured >= repeats.measured) break;
+    if (!isWarmup && measured > 0 && !shouldTakeAnotherNetworkRep({ totalMeasuredMs })) break;
     const tag = isWarmup
       ? `warmup ${rep + 1}/${repeats.warmup}`
-      : `measured ${rep - repeats.warmup + 1}/${repeats.measured}`;
+      : `measured ${measured + 1}/${repeats.measured}`;
     const scratch = `${scratchBase}-${rep}`;
     await mkdir(scratch, { recursive: true });
     const files = buildFiles(plan, scratch, sizeClass);
     let line = `  ${tag.padEnd(14)} `;
+    let repWallMs = 0;
     for (const sys of systems) {
       try {
         const m =
           sys === 'nc' ? { wallMs: (await localNc(files, scratch)).wallMs, bytes: totalBytes(plan) }
-          : sys === 'cp' ? { wallMs: (await localCp(files, scratch)).wallMs, bytes: totalBytes(plan) }
+          : sys === 'cat' ? { wallMs: (await localCat(files, scratch)).wallMs, bytes: totalBytes(plan) }
           : await runOneNearbytes(pair, plan, sizeClass === 'burst');
+        repWallMs = Math.max(repWallMs, m.wallMs);
         if (!isWarmup) {
           const row = { wallMs: m.wallMs, goodputMbps: mbps(m.bytes, m.wallMs) };
           if (sys === 'nearbytes') {
@@ -196,6 +203,10 @@ async function runSizeClass({ pair, sizeClass, plan, scratchBase, repeats }) {
         line += `${sys}=FAIL  `;
         console.error(`    ${sys} failed: ${err.message}`);
       }
+    }
+    if (!isWarmup) {
+      measured++;
+      totalMeasuredMs += repWallMs;
     }
     console.log(line);
     cleanScratch(scratch);

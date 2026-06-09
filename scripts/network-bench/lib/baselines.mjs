@@ -1,7 +1,7 @@
 /**
  * Reference baselines for the three categories.
  *
- *   local:  nc (raw TCP wire)         + cp (filesystem)
+ *   local:  nc (raw TCP wire)         + cat (byte-for-byte file copy; avoids APFS clonefile)
  *   lan:     nc (raw TCP wire)         + scp + rsync
  *   wan:     scp (encrypted transfer)  + rsync (delta + checksum)
  *
@@ -107,23 +107,27 @@ async function runOneNc(f, scratch, port) {
   await listenerDone;
 }
 
-/* ───────────────────────── local: cp ─────────────────────────────────── */
+/* ───────────────────────── local: cat ────────────────────────────────── */
 
-export async function localCp(files, scratch) {
+/** Byte-for-byte copy; avoids macOS APFS `cp` clonefile/reflink on same volume. */
+export async function localCat(files, scratch) {
   const t0 = hrMs();
   await Promise.all(
     files.map((f) => {
-      const dst = join(scratch, `cp-${f.name}.bin`);
+      const dst = join(scratch, `cat-${f.name}.bin`);
       try {
         unlinkSync(dst);
       } catch {
         /* not present */
       }
-      return runProc('cp', [f.path, dst]);
+      return runProc('sh', ['-c', `cat ${shellQuote(f.path)} > ${shellQuote(dst)}`]);
     }),
   );
   return { wallMs: hrMs() - t0, bytes: totalBytes(files), count: files.length };
 }
+
+/** @deprecated Use {@link localCat}; APFS `cp` often uses clonefile. */
+export const localCp = localCat;
 
 /* ─────────────────────── lan/wan: scp ────────────────────────────────── */
 

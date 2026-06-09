@@ -31,6 +31,7 @@ import { dirname, join, resolve } from 'node:path';
 import { collectLocalHostInfo, collectRemoteHostInfo } from './lib/hostinfo.mjs';
 import { loadHosts, requireLan } from './lib/hosts.mjs';
 import { SIZES, REPEATS, describeSize, totalBytes } from './lib/sizes.mjs';
+import { shouldTakeAnotherNetworkRep } from '../lib/bench-timing.mjs';
 import { ensureRemoteWorkspace } from './lib/deploy.mjs';
 import { ensureAlicePayload, lanScp, lanRsync } from './lib/baselines.mjs';
 import { NearbytesPair } from './lib/nearbytes-pair.mjs';
@@ -83,10 +84,15 @@ async function runSizeClass({ pair, aliceHost, bobHost, sizeClass, plan, repeats
 
   const alicePaths = await ensurePayloads(aliceHost, plan, sizeClass);
 
+  let totalMeasuredMs = 0;
+  let measured = 0;
   for (let rep = 0; rep < repeats.warmup + repeats.measured; rep++) {
     const isWarmup = rep < repeats.warmup;
-    const tag = isWarmup ? `warmup ${rep + 1}/${repeats.warmup}` : `measured ${rep - repeats.warmup + 1}/${repeats.measured}`;
+    if (!isWarmup && measured >= repeats.measured) break;
+    if (!isWarmup && measured > 0 && !shouldTakeAnotherNetworkRep({ totalMeasuredMs })) break;
+    const tag = isWarmup ? `warmup ${rep + 1}/${repeats.warmup}` : `measured ${measured + 1}/${repeats.measured}`;
     let line = `  ${tag.padEnd(14)} `;
+    let repWallMs = 0;
     for (const sys of systems) {
       try {
         const m = sys === 'scp'
@@ -94,6 +100,7 @@ async function runSizeClass({ pair, aliceHost, bobHost, sizeClass, plan, repeats
           : sys === 'rsync'
           ? { ...(await lanRsync(aliceHost, bobHost, alicePaths)), bytes: totalBytes(plan) }
           : await runOneNearbytes(pair, plan, sizeClass === 'burst');
+        repWallMs = Math.max(repWallMs, m.wallMs);
         if (!isWarmup) {
           results[sys].push({ wallMs: m.wallMs, goodputMbps: mbps(m.bytes, m.wallMs) });
           if (sys === 'nearbytes' && m.perStream) perStreamAll.push(m.perStream);
@@ -103,6 +110,10 @@ async function runSizeClass({ pair, aliceHost, bobHost, sizeClass, plan, repeats
         line += `${sys}=FAIL  `;
         console.error(`    ${sys} failed: ${err.message}`);
       }
+    }
+    if (!isWarmup) {
+      measured++;
+      totalMeasuredMs += repWallMs;
     }
     console.log(line);
   }

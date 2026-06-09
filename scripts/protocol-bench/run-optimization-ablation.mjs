@@ -4,6 +4,9 @@
  *
  *   yarn bench:opt-ablation
  *   yarn bench:opt-ablation -- --cases 128MiB_x1_seq --target-ms 15000
+ *   yarn bench:opt-ablation -- --opt-off overlap-expect   # disable one flag (others stay on)
+ *
+ * Records per-rep phase timelines (bulk-recv-phases markers; no extra hot-path work).
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
@@ -11,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import { DEFAULT_BENCH_TARGET_MS } from '../lib/local-config.mjs';
+import { resolveBenchRepeatBudget, shouldTakeAnotherBenchRep } from '../lib/bench-timing.mjs';
+import { aggregateTimelines } from '../lib/phase-timeline.mjs';
 import { ablationConfigs, envForOpts, OPT_DEFS } from '../lib/optimization-flags.mjs';
 import { ensureProtocolPeerBuilt, killStrayProtocolPeers, ProtocolPair } from './lib/protocol-pair.mjs';
 
@@ -19,17 +24,20 @@ const REPO_ROOT = resolve(HERE, '..', '..');
 const MIB = 1024 * 1024;
 
 const CASES = [
-  { label: '64MiB_512KiB_x128_burst', count: 128, bytes: 512 * 1024, burst: true },
   { label: '64MiB_4MiB_x16_burst', count: 16, bytes: 4 * MIB, burst: true },
   { label: '128MiB_x1_seq', count: 1, bytes: 128 * MIB, burst: false },
+  { label: '64MiB_512KiB_x128_burst', count: 128, bytes: 512 * 1024, burst: true },
 ];
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 };
-const targetMs = Number(arg('--target-ms', process.env.NEARBYTES_ABLATION_TARGET_MS ?? String(DEFAULT_BENCH_TARGET_MS)));
-const maxRepeats = Number(arg('--max-repeats', process.env.NEARBYTES_ABLATION_MAX_REPEATS ?? '4'));
+const { targetMs, maxRepeats } = resolveBenchRepeatBudget({
+  targetMs: arg('--target-ms', process.env.NEARBYTES_ABLATION_TARGET_MS ?? String(DEFAULT_BENCH_TARGET_MS)),
+  maxRepeats: arg('--max-repeats', process.env.NEARBYTES_ABLATION_MAX_REPEATS ?? '4'),
+  label: 'opt-ablation',
+});
 const outPath = arg('--out', join(REPO_ROOT, '.local/bench/protocol/opt-ablation-local.json'));
 const caseFilter = arg('--cases', '').split(',').map((s) => s.trim()).filter(Boolean);
 const skipBuild = process.argv.includes('--skip-build');
@@ -59,13 +67,20 @@ async function measureRepeated(plan, env) {
   killStrayProtocolPeers();
   let pair = await ProtocolPair.startLocal(base, { readyTimeoutMs: 180000, friendMs: 120000 });
   try {
-    while (runs.length < maxRepeats && totalMs < targetMs) {
+    while (shouldTakeAnotherBenchRep({ runs, totalMs, targetMs, maxRepeats })) {
+      if (runs.length > 0) {
+        await pair.alice.exit().catch(() => {});
+        await pair.bob.exit().catch(() => {});
+        killStrayProtocolPeers();
+        await new Promise((r) => setTimeout(r, 500));
+        pair = await ProtocolPair.startLocal(base, { readyTimeoutMs: 180000, friendMs: 120000 });
+      }
       const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
       const timeoutMs = Math.min(120_000, Math.max(30_000, (plan.count * plan.bytes) / MIB * 2000 + 15_000));
       let r;
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          r = await pair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: plan.label });
+          r = await pair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: `${plan.label}-r${runs.length}` });
           break;
         } catch (err) {
           if (attempt === 2 || !/peer-stalled|timeout/i.test(String(err?.message))) throw err;
@@ -81,6 +96,7 @@ async function measureRepeated(plan, env) {
         bytes: r.bytes,
         goodputMbps: r.goodputMbps,
         publishWallMs: r.publishWallMs,
+        timeline: r.timeline,
       });
       totalMs += r.wallMs;
       totalBytes += r.bytes;
@@ -142,7 +158,12 @@ async function main() {
     log(`config ${cfg.id} (disabled: ${[...cfg.disabled].join(', ') || 'none'})`);
     const row = { configId: cfg.id, label: cfg.label, disabled: [...cfg.disabled], cases: {} };
     for (const plan of cases) {
-      row.cases[plan.label] = await measureRepeated(plan, env);
+      const measured = await measureRepeated(plan, env);
+      const timelines = measured.runs.map((r) => r.timeline).filter(Boolean);
+      row.cases[plan.label] = {
+        ...measured,
+        timelineAgg: timelines.length ? aggregateTimelines(timelines) : null,
+      };
     }
     report.results.push(row);
   }

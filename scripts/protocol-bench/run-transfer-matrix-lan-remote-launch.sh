@@ -11,6 +11,16 @@ ALICE_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan alice workdir
 BOB="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob ssh)"
 BOB_WORKDIR="$(node "$ROOT/scripts/lib/print-host-field.mjs" lan bob workdir)"
 NB="$ALICE_WORKDIR/nearbytes-benchmarks"
+TARGET_MS="${NEARBYTES_TRANSFER_TARGET_MS:-60000}"
+MAX_REPEATS="${NEARBYTES_TRANSFER_MAX_REPEATS:-3}"
+# Hard cap: never exceed 60s measurement budget (see scripts/lib/bench-timing.mjs)
+if [[ "$TARGET_MS" -gt 60000 ]]; then TARGET_MS=60000; fi
+MATRIX_CASES="${NEARBYTES_TRANSFER_MATRIX_CASES:-}"
+LAN_MAX_ATTEMPTS="${NEARBYTES_LAN_REMOTE_MAX_ATTEMPTS:-1}"
+REMOTE_ENV="NEARBYTES_TRANSFER_TARGET_MS=${TARGET_MS} NEARBYTES_TRANSFER_MAX_REPEATS=${MAX_REPEATS} NEARBYTES_LAN_REMOTE_MAX_ATTEMPTS=${LAN_MAX_ATTEMPTS}"
+if [[ -n "$MATRIX_CASES" ]]; then
+  REMOTE_ENV+=" NEARBYTES_TRANSFER_MATRIX_CASES=${MATRIX_CASES}"
+fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REMOTE_OUT="$NB/.local/bench/protocol/transfer-matrix-lan-${STAMP}.json"
@@ -60,10 +70,12 @@ if ! ssh -o ConnectTimeout=15 -o BatchMode=yes -n "$ALICE" "ssh -o BatchMode=yes
   ssh -o ConnectTimeout=15 -o BatchMode=yes -n "$ALICE" "ssh -o BatchMode=yes -o ConnectTimeout=10 $BOB 'echo bob-from-alice-ok'" >/dev/null
 fi
 
-echo "Stopping any prior remote worker…"
-ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "pkill -f '[r]un-transfer-matrix-lan-remote-worker' 2>/dev/null || true; pkill -f '[p]rotocol-peer.js' 2>/dev/null || true"
+SSH_FAST=( -o ConnectTimeout=15 -o BatchMode=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 )
 
-ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "mkdir -p '$NB/.local/bench/protocol' '$NB/.local/tmp' && chmod +x '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh'"
+echo "Stopping any prior remote worker…"
+ssh "${SSH_FAST[@]}" -n "$ALICE" "pkill -f '[r]un-transfer-matrix-lan-remote-worker' 2>/dev/null || true; pkill -f '[p]rotocol-peer.js' 2>/dev/null || true" || true
+
+ssh "${SSH_FAST[@]}" -n "$ALICE" "mkdir -p '$NB/.local/bench/protocol' '$NB/.local/tmp' && chmod +x '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh'"
 
 {
   echo "mode=remote"
@@ -81,7 +93,8 @@ ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "mkdir -p '$NB/.l
 : > "$LOG"
 echo "[launch $(date -u +%Y-%m-%dT%H:%M:%SZ)] remote worker starting on ${ALICE}" >> "$LOG"
 
-ssh -o ConnectTimeout=20 -o ServerAliveInterval=10 -n "$ALICE" "cd '$NB' && nohup '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh' '$REMOTE_OUT' '$REMOTE_LOG' '$REMOTE_META' >> '$REMOTE_LOG' 2>&1 & echo \$! > '$REMOTE_PIDFILE'"
+# Detach remote worker without holding this SSH session open (nohup alone can block until the child exits).
+ssh "${SSH_FAST[@]}" -n "$ALICE" "cd '$NB' && ( env $REMOTE_ENV nohup '$NB/scripts/protocol-bench/run-transfer-matrix-lan-remote-worker.sh' '$REMOTE_OUT' '$REMOTE_LOG' '$REMOTE_META' >>'$REMOTE_LOG' 2>&1 </dev/null & echo \$! > '$REMOTE_PIDFILE' )"
 
 echo "Remote LAN transfer matrix started on ${ALICE}"
 echo "  remote out: ${REMOTE_OUT}"

@@ -58,7 +58,7 @@ function main() {
       const row = tmRow(tm, label);
       if (!row) continue;
       const nb = row.systems?.nearbytes?.goodputMbps;
-      const bases = cat === 'local' ? ['nc', 'cp'] : ['rsync', 'scp'];
+      const bases = cat === 'local' ? ['nc', 'cat'] : ['rsync', 'scp'];
       const best = Math.max(...bases.map((s) => row.systems?.[s]?.goodputMbps ?? 0));
       const bestName = bases.find((s) => row.systems?.[s]?.goodputMbps === best) ?? bases[0];
       console.log(

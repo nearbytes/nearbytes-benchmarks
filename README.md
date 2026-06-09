@@ -29,7 +29,7 @@ Legacy `config/bench-hosts.local.json` and `config/e2e.local.json` still work bu
 
 Each machine entry needs at minimum `label`, `ssh` (or `null` for this Mac), and `workdir` on remotes. LAN and WAN benchmarks refuse to start if the required pair is missing.
 
-Default timing: **30 seconds** of measured wall time per workload case (`bench.targetMs` or `NEARBYTES_TRANSFER_TARGET_MS`). Baselines are always measured unless you pass `--nearbytes-only`.
+Default timing: **60 seconds max** measured wall time per workload × system (`bench.targetMs` or `NEARBYTES_TRANSFER_TARGET_MS`). Values above 60s are clamped (`scripts/lib/bench-timing.mjs`). Baselines are always measured unless you pass `--nearbytes-only`.
 
 ## Transfer matrix (default benchmarks)
 
@@ -37,7 +37,7 @@ The transfer matrix compares Nearbytes file transfer against reference tools on 
 
 | Topology | Peers | Discovery | Baselines |
 |----------|-------|-----------|-----------|
-| **local** | Loopback alice + bob on this machine | loopback | `nc`, `cp` |
+| **local** | Loopback alice + bob on this machine | loopback | `nc`, `cat` |
 | **lan** | Two lab hosts on the same VLAN | mDNS | `nc` (raw TCP wire), `scp`, `rsync` (run from alice) |
 | **wan** | This Mac (alice) ↔ remote bob | DHT (Hyperswarm) | `scp`, `rsync` |
 
