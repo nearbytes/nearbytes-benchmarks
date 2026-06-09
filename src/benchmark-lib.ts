@@ -68,9 +68,12 @@ export function hrtimeMs(): number {
 }
 
 export function makePayload(sizeBytes: number, seed: number): Buffer {
-  const buf = Buffer.alloc(sizeBytes);
-  for (let i = 0; i < sizeBytes; i++) {
-    buf[i] = (i + seed) & 0xff;
+  if (sizeBytes <= 0) return Buffer.alloc(0);
+  const buf = Buffer.allocUnsafe(sizeBytes);
+  const tile = Buffer.allocUnsafe(256);
+  for (let i = 0; i < 256; i++) tile[i] = (i + seed) & 0xff;
+  for (let off = 0; off < sizeBytes; off += 256) {
+    tile.copy(buf, off, 0, Math.min(256, sizeBytes - off));
   }
   return buf;
 }

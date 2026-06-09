@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureRemoteWorkspace } from '../network-bench/lib/deploy.mjs';
 import { DEFAULT_BENCH_TARGET_MS } from '../lib/local-config.mjs';
 import { resolveBenchRepeatBudget, shouldTakeAnotherBenchRep } from '../lib/bench-timing.mjs';
+import { sustainedMinWallMs } from '../lib/sustained-bench.mjs';
 import { aggregateTimelines } from '../lib/phase-timeline.mjs';
 import { loadHosts, requireLan, requireWan } from '../network-bench/lib/hosts.mjs';
 import {
@@ -27,7 +28,9 @@ import {
   lanRsync,
   lanScp,
   localCat,
+  localCatSustained,
   localNc,
+  localNcSustained,
   prepareRemoteDir,
   remoteRsync,
   totalBytes,
@@ -56,13 +59,51 @@ const BASELINE_SYSTEMS = {
   wan: ['scp', 'rsync'],
 };
 
-const CASES = [
+const SUSTAINED_MIN_WALL_MS = sustainedMinWallMs();
+
+const MICRO_CASES = [
   { label: '64MiB_512KiB_x128_burst', count: 128, bytes: 512 * KIB, burst: true },
   { label: '64MiB_1MiB_x64_burst', count: 64, bytes: 1 * MIB, burst: true },
   { label: '64MiB_4MiB_x16_burst', count: 16, bytes: 4 * MIB, burst: true },
   { label: '64MiB_16MiB_x4_burst', count: 4, bytes: 16 * MIB, burst: true },
   { label: '128MiB_x1_seq', count: 1, bytes: 128 * MIB, burst: false },
 ];
+
+/** Local default: ≥20 s accumulated wall per rep, 3 reps ≈ 60 s budget (solid stats, not micro). */
+const SUSTAINED_CASES = [
+  {
+    label: '128MiB_sustained_20s',
+    count: 1,
+    bytes: 128 * MIB,
+    burst: false,
+    sustained: { minWallMs: SUSTAINED_MIN_WALL_MS, warmupTransfers: 1 },
+  },
+  {
+    label: '4MiB_sustained_20s',
+    count: 1,
+    bytes: 4 * MIB,
+    burst: false,
+    sustained: { minWallMs: SUSTAINED_MIN_WALL_MS, warmupTransfers: 2 },
+  },
+  /** Same 64 MiB per batch as micro burst row; sustained ≥20 s wall so publish overlaps wire. */
+  {
+    label: '64MiB_4MiB_x16_burst_sustained_20s',
+    count: 16,
+    bytes: 4 * MIB,
+    burst: true,
+    sustained: { minWallMs: SUSTAINED_MIN_WALL_MS, warmupTransfers: 1 },
+  },
+  /** 128 MiB per batch (32×4 MiB parallel publish) — pipelined alternative to 128MiB_sustained_20s. */
+  {
+    label: '128MiB_4MiB_x32_burst_sustained_20s',
+    count: 32,
+    bytes: 4 * MIB,
+    burst: true,
+    sustained: { minWallMs: SUSTAINED_MIN_WALL_MS, warmupTransfers: 1 },
+  },
+];
+
+const CASES = [...SUSTAINED_CASES, ...MICRO_CASES];
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -147,9 +188,12 @@ function topologyMeta(category, hosts) {
 }
 
 function makePayload(sizeBytes, seed) {
-  const buf = Buffer.alloc(sizeBytes);
-  for (let i = 0; i < sizeBytes; i++) {
-    buf[i] = (i + seed) & 0xff;
+  if (sizeBytes <= 0) return Buffer.alloc(0);
+  const buf = Buffer.allocUnsafe(sizeBytes);
+  const tile = Buffer.allocUnsafe(256);
+  for (let i = 0; i < 256; i++) tile[i] = (i + seed) & 0xff;
+  for (let off = 0; off < sizeBytes; off += 256) {
+    tile.copy(buf, off, 0, Math.min(256, sizeBytes - off));
   }
   return buf;
 }
@@ -359,10 +403,76 @@ function isRetryableNearbytesError(err) {
   return /peer-stalled|timeout|ECONNRESET|socket hang up/i.test(msg);
 }
 
+async function measureNearbytesSustainedOnPair(pair, plan, category) {
+  const { minWallMs, warmupTransfers = 1 } = plan.sustained;
+  const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
+  const timeoutMs = nearbytesTimeoutMs(category, plan);
+  const measured = await measureRepeated('nearbytes', plan, async (rep) => {
+    log(
+      `nearbytes ${plan.label} sustained rep ${rep + 1} — target ≥${minWallMs}ms wall ` +
+        `(${plan.count}×${(plan.bytes / MIB).toFixed(1)} MiB per transfer)`,
+    );
+    const r = await pair.measureSustained({
+      files,
+      timeoutMs,
+      burst: plan.burst,
+      caseTag: `${plan.label}-r${rep}`,
+      minWallMs,
+      warmupTransfers: rep === 0 ? warmupTransfers : 0,
+    });
+    log(
+      `nearbytes ${plan.label} sustained rep ${rep + 1} — ` +
+        `e2e=${r.goodputMbps} Mb/s wire=${r.goodputWireMbps ?? 'n/a'} Mb/s ` +
+        `wall=${r.wallMs}ms wireWin=${r.wireWindowMs}ms xfers=${r.transferCount}`,
+    );
+    return {
+      wallMs: r.wallMs,
+      bytes: r.bytes,
+      goodputMbps: r.goodputMbps,
+      goodputWireMbps: r.goodputWireMbps,
+      wireWindowMs: r.wireWindowMs,
+      transferCount: r.transferCount,
+      sustainedTargetReached: r.sustainedTargetReached,
+      wireTargetReached: r.wireTargetReached,
+      runs: r.runs,
+    };
+  });
+  const timelines = measured.runs.flatMap((r) => r.runs ?? []).map((t) => t.timeline).filter(Boolean);
+  const timelineAgg = timelines.length ? aggregateTimelines(timelines) : null;
+  const wireMbps = measured.runs.map((r) => r.goodputWireMbps).filter((n) => n != null);
+  const goodputWireMbps =
+    wireMbps.length > 0
+      ? Number((wireMbps.reduce((a, b) => a + b, 0) / wireMbps.length).toFixed(2))
+      : null;
+  return {
+    ...measured,
+    mode: 'sustained',
+    minWallMs,
+    goodputWireMbps,
+    friendSessionMs: pair.friendMs,
+    timelineAgg,
+  };
+}
+
 async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}) {
+  if (plan.sustained) {
+    return measureNearbytesSustainedOnPair(pair, plan, category);
+  }
   let activePair = pair;
   // Fresh pair each rep on loopback/LAN keeps activity logs small; WAN skips (DHT attach is costly).
-  const freshPairEachRep = restartPair && (category === 'local' || category === 'lan');
+  const warmPair = process.env.NEARBYTES_TRANSFER_WARM_PAIR === '1';
+  const freshPairEachRep = restartPair && (category === 'local' || category === 'lan') && !warmPair;
+  const warmAttach = process.env.NEARBYTES_TRANSFER_WARM_ATTACH === '1';
+  if (warmAttach && category === 'wan') {
+    try {
+      const files = Array.from({ length: plan.count }, () => ({ bytes: plan.bytes }));
+      const timeoutMs = nearbytesTimeoutMs(category, plan);
+      log(`nearbytes ${plan.label} warm-attach discard run`);
+      await activePair.measureFiles({ files, timeoutMs, burst: plan.burst, caseTag: `${plan.label}-warm` });
+    } catch (err) {
+      log(`nearbytes ${plan.label} warm-attach discard failed (${err.message}) — continuing`);
+    }
+  }
   const measured = await measureRepeated('nearbytes', plan, async (rep) => {
     if (freshPairEachRep && rep > 0) {
       await activePair.stop().catch(() => {});
@@ -407,13 +517,22 @@ async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}
   return { ...measured, friendSessionMs: activePair.friendMs, resources, timelineAgg };
 }
 
-function selectedCases() {
-  if (caseFilter.length === 0) return CASES;
-  const picked = CASES.filter((c) => caseFilter.includes(c.label));
-  if (picked.length === 0) {
-    throw new Error(`--cases matched nothing (wanted: ${caseFilter.join(', ')})`);
+function selectedCases(category) {
+  let pool = CASES;
+  if (caseFilter.length > 0) {
+    pool = CASES.filter((c) => caseFilter.includes(c.label));
+    if (pool.length === 0) {
+      throw new Error(`--cases matched nothing (wanted: ${caseFilter.join(', ')})`);
+    }
+    return pool;
   }
-  return picked;
+  if (category === 'local' && process.env.NEARBYTES_TRANSFER_MICRO !== '1' && !hasArg('--micro')) {
+    return SUSTAINED_CASES;
+  }
+  if (category === 'local') {
+    return MICRO_CASES;
+  }
+  return MICRO_CASES;
 }
 
 async function startFreshPair(category, hosts) {
@@ -438,7 +557,7 @@ async function startFreshPair(category, hosts) {
 }
 
 async function runCategory(category, hosts, report) {
-  const plans = selectedCases();
+  const plans = selectedCases(category);
   const baselines = BASELINE_SYSTEMS[category] ?? ['scp', 'rsync'];
   await ensureProtocolPeerBuilt();
   killStrayProtocolPeers();
@@ -501,6 +620,37 @@ async function runCategory(category, hosts, report) {
 }
 
 async function localBaseline(system, plan) {
+  if (plan.sustained) {
+    const { minWallMs, warmupTransfers = 1 } = plan.sustained;
+    const runSustained = system === 'nc' ? localNcSustained : localCatSustained;
+    return measureRepeated(system, plan, async (rep) => {
+      log(`${system} ${plan.label} sustained rep ${rep + 1} — target ≥${minWallMs}ms wall`);
+      const { dir, files } = makeLocalFiles(plan, `${system}-${plan.label}-${rep}`);
+      const recv = localScratch('baseline', `${system}-${plan.label}-${rep}-recv`);
+      try {
+        const t = await runSustained(files, recv, {
+          minWallMs,
+          warmupTransfers: rep === 0 ? warmupTransfers : 0,
+        });
+        const goodputMbps = mbps(t.bytes, t.wallMs);
+        log(
+          `${system} ${plan.label} sustained rep ${rep + 1} — ${goodputMbps} Mb/s ` +
+            `wall=${t.wallMs}ms xfers=${t.count}`,
+        );
+        return {
+          wallMs: t.wallMs,
+          bytes: t.bytes,
+          goodputMbps,
+          goodputWireMbps: goodputMbps,
+          transferCount: t.count,
+          sustainedTargetReached: t.sustainedTargetReached,
+        };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+        rmSync(recv, { recursive: true, force: true });
+      }
+    }).then((m) => ({ ...m, mode: 'sustained', minWallMs, goodputWireMbps: m.goodputMbps }));
+  }
   return measureRepeated(system, plan, async (rep) => {
     log(`${system} ${plan.label} rep ${rep + 1} — preparing ${plan.count} files`);
     const { dir, files } = makeLocalFiles(plan, `${system}-${plan.label}-${rep}`);

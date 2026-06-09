@@ -63,6 +63,8 @@ Remote `scp` baselines MUST use classic scp mode (`scp -O`) so many-small-file r
 
 Each system/case SHOULD repeat until at least 10 s of measured wall time is accumulated (cap: eight trials). Reports MUST include `repeats`, `wallMs`, `bytes`, `goodputMbps`, and `targetReached`; when the repeat cap prevents reaching the target duration, consumers MUST treat that row as short-duration evidence rather than a full-duration benchmark.
 
+**Local loopback default (sustained):** `128MiB_sustained_20s` and `4MiB_sustained_20s` loop back-to-back transfers on a **warm pair** until each rep accumulates ≥20 s wall (3 reps ≈ 60 s budget). This replaces micro single-shot rows for publication claims. Sustained Nearbytes rows also report `goodputWireMbps` (first→last wire byte window). Micro rows (`128MiB_x1_seq`, …) remain for phase Gantt / ablation via `--micro` or `NEARBYTES_TRANSFER_MICRO=1`.
+
 **SSH to CNR hosts:** The harness MUST minimize distinct SSH handshakes to institutional machines (`pc-ciancia`, `fmt-5000`, `zombie`). LAN opens one `SshMaster` per remote CNR host; WAN opens one for bob. WAN uses a fresh Nearbytes friend session per row (shared WAN sessions wedge after the first burst); LAN reuses one warm mDNS friend session for all Nearbytes rows. Use `--skip-deploy` when remotes are already built. Do not run triple `sshPreflight` retries against CNR sshd.
 
 Reports MUST include a `topology` block per category (`peers`, `discovery`, `alice`, `bob`, `orchestrator`).

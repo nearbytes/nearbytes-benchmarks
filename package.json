@@ -40,6 +40,7 @@
     "bench:protocol:suite:lan": "node scripts/protocol-bench/run-lan.mjs",
     "bench:protocol:suite:wan": "node scripts/protocol-bench/run-wan.mjs",
     "bench:opt-ablation": "node scripts/protocol-bench/run-optimization-ablation.mjs",
+    "bench:parity": "node scripts/protocol-bench/run-parity-experiment.mjs",
     "bench:protocol:transfer-matrix": "node scripts/protocol-bench/run-transfer-matrix.mjs",
     "bench:protocol:transfer-matrix:lan:detached": "bash scripts/protocol-bench/run-transfer-matrix-lan-detached.sh",
     "bench:protocol:transfer-matrix:lan:pull": "bash scripts/protocol-bench/pull-transfer-matrix-lan.sh",
@@ -56,10 +57,10 @@
   },
   "dependencies": {
     "nearbytes-chat": "https://github.com/nearbytes/nearbytes-chat.git#commit=6892ff741b7af37796b529d04cbb00fe2064f3d3",
-    "nearbytes-crypto": "github:nearbytes/nearbytes-crypto",
-    "nearbytes-engine": "https://github.com/nearbytes/nearbytes-engine.git#commit=f6758f7726eaae3a5949937bf890ee92f02e29f1",
-    "nearbytes-files": "https://github.com/nearbytes/nearbytes-files.git#commit=c08023fbe09571a819bb43a18ec2b477acb9e459",
-    "nearbytes-log": "https://github.com/nearbytes/nearbytes-log.git#commit=60aefbdd6172fc27c88a3e780ddddd8c03fcd999",
+    "nearbytes-crypto": "link:../nearbytes-crypto",
+    "nearbytes-engine": "link:../nearbytes-engine",
+    "nearbytes-files": "link:../nearbytes-files",
+    "nearbytes-log": "link:../nearbytes-log",
     "nearbytes-skeleton": "https://github.com/nearbytes/nearbytes-skeleton.git#commit=c6cf3e968c57e3c11bdfb913778befa53f4477bd"
   },
   "devDependencies": {

@@ -110,6 +110,58 @@ async function runOneNc(f, scratch, port) {
 /* ───────────────────────── local: cat ────────────────────────────────── */
 
 /** Byte-for-byte copy; avoids macOS APFS `cp` clonefile/reflink on same volume. */
+/**
+ * Repeat loopback nc/cat until accumulated wallMs ≥ minWallMs (after optional warmups).
+ * @param {{ minWallMs?: number, warmupTransfers?: number }} opts
+ */
+async function localSustained(runOnce, files, scratch, { minWallMs = 20_000, warmupTransfers = 1 } = {}) {
+  for (let w = 0; w < warmupTransfers; w++) {
+    const wdir = join(scratch, `warm-${w}`);
+    mkdirSync(wdir, { recursive: true });
+    await runOnce(files, wdir);
+  }
+  let accumWallMs = 0;
+  let totalBytes = 0;
+  let transferCount = 0;
+  while (accumWallMs < minWallMs) {
+    const tdir = join(scratch, `t-${transferCount}`);
+    mkdirSync(tdir, { recursive: true });
+    let t;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        t = await runOnce(files, tdir);
+        break;
+      } catch (err) {
+        if (attempt === 4 || !/nc listener|ECONNREFUSED|EADDRINUSE/i.test(String(err?.message ?? err))) {
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, 25 * attempt));
+      }
+    }
+    accumWallMs += t.wallMs;
+    totalBytes += t.bytes;
+    transferCount++;
+    if (transferCount % 32 === 0) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+  }
+  return {
+    wallMs: accumWallMs,
+    bytes: totalBytes,
+    count: transferCount,
+    minWallMs,
+    sustainedTargetReached: accumWallMs >= minWallMs,
+  };
+}
+
+export async function localNcSustained(files, scratch, opts) {
+  return localSustained(localNc, files, scratch, opts);
+}
+
+export async function localCatSustained(files, scratch, opts) {
+  return localSustained(localCat, files, scratch, opts);
+}
+
 export async function localCat(files, scratch) {
   const t0 = hrMs();
   await Promise.all(

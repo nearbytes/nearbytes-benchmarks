@@ -18,7 +18,12 @@ import { BENCH_CREDENTIALS } from '../benchmark-credentials.js';
 import { makePayload, hrtimeMs } from '../benchmark-lib.js';
 import { createMarkerTail, pollBenchMarkers, readBenchMarkers } from './test-markers.js';
 import { setupProtocolConfig, type ProtocolRole } from './protocol-peer-config.js';
-import { burstParallelEnabled, pregenPayloadEnabled } from '../optimization-flags.js';
+import {
+  burstParallelEnabled,
+  pregenPayloadEnabled,
+  publishPipelineEnabled,
+  publishPipelineWidth,
+} from '../optimization-flags.js';
 
 interface FileSpec {
   readonly name: string;
@@ -238,6 +243,23 @@ function trackRssMax(): { sample(): void; maxBytes(): number } {
   };
 }
 
+async function runWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function addOneFile(
   rt: EngineRuntime,
   name: string,
@@ -280,9 +302,11 @@ async function doPublish(
     const buf = f.buf ?? makePayload(f.bytes, f.seed ?? 0);
     return addOneFile(rt, f.name, buf, f.bytes, mem);
   };
-  if (cmd.burst && burstParallelEnabled()) {
-    const results = await Promise.all(specs.map((s) => runOne(s)));
-    per.push(...results);
+  if (cmd.burst && publishPipelineEnabled()) {
+    const width = publishPipelineWidth();
+    per.push(...await runWithConcurrency(specs, width, runOne));
+  } else if (cmd.burst && burstParallelEnabled()) {
+    per.push(...await Promise.all(specs.map((s) => runOne(s))));
   } else {
     for (const s of specs) {
       per.push(await runOne(s));

@@ -9,6 +9,11 @@ export const OPT_DEFS = [
   { id: 'inflight-dedup', env: 'NEARBYTES_OPT_INFLIGHT_DEDUP', label: 'In-flight want deduplication (sync)' },
   { id: 'tcp-bulk', env: 'NEARBYTES_OPT_TCP_BULK', label: 'TCP bulk sender (readSync + cork)' },
   { id: 'hash-pool', env: 'NEARBYTES_OPT_HASH_POOL', label: 'SHA-256 worker pool on receive' },
+  {
+    id: 'publish-pipeline',
+    env: 'NEARBYTES_OPT_PUBLISH_PIPELINE',
+    label: 'Burst publish with limited concurrency (pipeline encrypt onto wire)',
+  },
 ] as const;
 
 export type OptId = (typeof OPT_DEFS)[number]['id'];
@@ -30,4 +35,13 @@ export function pregenPayloadEnabled(): boolean {
 
 export function overlapExpectEnabled(): boolean {
   return optEnabled('NEARBYTES_OPT_OVERLAP_EXPECT');
+}
+
+export function publishPipelineEnabled(): boolean {
+  return optEnabled('NEARBYTES_OPT_PUBLISH_PIPELINE', false);
+}
+
+export function publishPipelineWidth(): number {
+  const raw = Number(process.env['NEARBYTES_OPT_PUBLISH_PIPELINE_WIDTH'] ?? '8');
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 4;
 }

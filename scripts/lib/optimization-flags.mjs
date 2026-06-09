@@ -10,6 +10,7 @@ export const OPT_DEFS = [
   { id: 'inflight-dedup', env: 'NEARBYTES_OPT_INFLIGHT_DEDUP', sync: true },
   { id: 'tcp-bulk', env: 'NEARBYTES_OPT_TCP_BULK', sync: true },
   { id: 'hash-pool', env: 'NEARBYTES_OPT_HASH_POOL', sync: true },
+  { id: 'publish-pipeline', env: 'NEARBYTES_OPT_PUBLISH_PIPELINE', sync: false },
 ];
 
 const OPT_BY_ID = new Map(OPT_DEFS.map((d) => [d.id, d]));

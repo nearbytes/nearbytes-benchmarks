@@ -11,16 +11,37 @@ export const FULL = false;
 
 /** Paper figures only need these rows per topology (see bench-sanity TM_NETWORK_NEARBYTES). */
 const TM_CASES = {
-  local: null,
+  local: [
+    '128MiB_sustained_20s',
+    '64MiB_4MiB_x16_burst_sustained_20s',
+    '4MiB_sustained_20s',
+  ],
   lan: ['64MiB_512KiB_x128_burst', '128MiB_x1_seq'],
   wan: ['64MiB_1MiB_x64_burst', '128MiB_x1_seq'],
+};
+
+/** Parity experiment winners (see run-parity-experiment.mjs). */
+const PARITY_ENV = {
+  NEARBYTES_OPT_BURST_PARALLEL: '1',
+  NEARBYTES_OPT_PUBLISH_PIPELINE: '1',
+  NEARBYTES_OPT_PUBLISH_PIPELINE_WIDTH: '4',
+  NEARBYTES_OPT_OVERLAP_EXPECT: '1',
+  NEARBYTES_LOG_FAST_WRITE: '1',
+  NEARBYTES_SUSTAINED_PUBLISH_PIPELINE: '1',
 };
 
 export function transferMatrixEnv(category = 'local') {
   const env = {
     NEARBYTES_TRANSFER_TARGET_MS: TARGET_MS,
     NEARBYTES_TRANSFER_MAX_REPEATS: MAX_REPEATS,
+    ...PARITY_ENV,
   };
+  if (category === 'local' || category === 'lan') {
+    env.NEARBYTES_TRANSFER_WARM_PAIR = '1';
+  }
+  if (category === 'wan') {
+    env.NEARBYTES_TRANSFER_WARM_ATTACH = '1';
+  }
   const cases = TM_CASES[category];
   if (cases?.length) env.NEARBYTES_TRANSFER_MATRIX_CASES = cases.join(',');
   return env;

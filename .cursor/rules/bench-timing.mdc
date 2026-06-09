@@ -13,3 +13,4 @@ alwaysApply: false
 - Default and maximum `targetMs` / `NEARBYTES_TRANSFER_TARGET_MS` / `bench.targetMs` = **60000**. Values above are **clamped** in `scripts/lib/bench-timing.mjs`.
 - Do **not** add `NEARBYTES_PAPER_BENCH_FULL` or multi-minute targets. `yarn bench:paper` uses the same 60s cap.
 - Single slow trials (e.g. WAN 128 MiB) may use one rep when one rep exceeds 60s — that is expected.
+- **Local loopback default** is *sustained* mode (`128MiB_sustained_20s`, `4MiB_sustained_20s`): each rep loops transfers until ≥20 s wall on a warm pair (3 reps ≈ 60 s budget). Micro single-shot rows remain via `--micro` or `NEARBYTES_TRANSFER_MICRO=1`. Sustained rows also report `goodputWireMbps` (first→last wire byte window).

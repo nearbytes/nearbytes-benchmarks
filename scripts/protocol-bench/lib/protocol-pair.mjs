@@ -10,6 +10,7 @@ import { createInterface } from 'node:readline';
 import { REMOTE_NODE_BIN } from '../../network-bench/lib/deploy.mjs';
 import { optEnabled, optEnvShell } from '../../lib/optimization-flags.mjs';
 import { buildPhaseTimeline } from '../../lib/phase-timeline.mjs';
+import { summarizeSustainedSession, sustainedMinWallMs } from '../../lib/sustained-bench.mjs';
 import { startResourceMonitor, summarize } from '../../network-bench/lib/resmon.mjs';
 
 function overlapExpectEnabled() {
@@ -252,7 +253,7 @@ export class ProtocolPair {
       resmon && this.bob.child?.pid > 0 ? startResourceMonitor(this.bob.child.pid) : null;
     let publish;
     let expect;
-    const useOverlap = overlapExpectEnabled() && named.length === 1;
+    const useOverlap = overlapExpectEnabled();
     if (useOverlap) {
       const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
       await new Promise((r) => setImmediate(r));
@@ -300,6 +301,107 @@ export class ProtocolPair {
         receiveCpuMs: expect.receiveCpuMs,
         decodeRssBytesMax: expect.decodeRssBytesMax,
         monitor: monBobReport ? summarize(monBobReport) : null,
+      },
+    };
+  }
+
+  /**
+   * Loop transfers on this warm pair until accumulated wallMs ≥ minWallMs.
+   * @param {{ files: { bytes: number }[], timeoutMs: number, burst?: boolean, caseTag?: string, minWallMs?: number, warmupTransfers?: number }} opts
+   */
+  async measureSustained({
+    files,
+    timeoutMs,
+    burst = false,
+    caseTag = 'sustained',
+    minWallMs = sustainedMinWallMs(),
+    warmupTransfers = 1,
+  }) {
+    const warmups = Math.max(0, warmupTransfers);
+    for (let w = 0; w < warmups; w++) {
+      await this.measureFiles({
+        files,
+        timeoutMs,
+        burst,
+        caseTag: `${caseTag}-warm${w}`,
+      });
+    }
+    const transfers = [];
+    let accumWallMs = 0;
+    const pipeline = process.env.NEARBYTES_SUSTAINED_PUBLISH_PIPELINE === '1';
+    if (!pipeline) {
+      while (accumWallMs < minWallMs) {
+        const r = await this.measureFiles({
+          files,
+          timeoutMs,
+          burst,
+          caseTag: `${caseTag}-${transfers.length}`,
+        });
+        transfers.push(r);
+        accumWallMs += r.wallMs;
+      }
+      return { ...summarizeSustainedSession(transfers, minWallMs), runs: transfers };
+    }
+
+    let carryExpect = null;
+    while (accumWallMs < minWallMs) {
+      const id = this.nextId++;
+      const tag = String(caseTag).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const named = files.map((f, i) => ({
+        name: `proto-${tag}-${id}-${i}.bin`,
+        bytes: f.bytes,
+        seed: id * 10000 + i,
+      }));
+      const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
+      await new Promise((r) => setImmediate(r));
+      const publishP = this.alice.send({ cmd: 'publish', id, files: named, burst: !!burst });
+      if (carryExpect) {
+        const r = await carryExpect;
+        transfers.push(r);
+        accumWallMs += r.wallMs;
+        if (accumWallMs >= minWallMs) break;
+      }
+      carryExpect = this.finishPipelinedTransfer(publishP, expectP, named, files);
+      await withTimeout(publishP, timeoutMs, `publish files #${id}`);
+    }
+    if (carryExpect) {
+      const r = await carryExpect;
+      transfers.push(r);
+    }
+    return { ...summarizeSustainedSession(transfers, minWallMs), runs: transfers, pipelined: true };
+  }
+
+  async finishPipelinedTransfer(publishP, expectP, named, files) {
+    const [publish, expect] = await Promise.all([
+      publishP,
+      expectP,
+    ]);
+    const lastRecv = Math.max(...expect.files.map((f) => f.receivedMs));
+    const bytes = files.reduce((a, f) => a + f.bytes, 0);
+    const publishStartedAt = publish.publishStartedAt ?? Date.now() - publish.totalWallMs;
+    const recvPhases = expect.files.map((f) => f.phases).filter(Boolean);
+    const timeline = buildPhaseTimeline({
+      publishStartedAt,
+      publishWallMs: publish.totalWallMs,
+      recvPhases,
+    });
+    return {
+      wallMs: lastRecv,
+      bytes,
+      count: files.length,
+      publishWallMs: publish.totalWallMs,
+      publishStartedAt,
+      goodputMbps: bytes > 0 && lastRecv > 0 ? Number(((bytes * 8) / lastRecv / 1000).toFixed(2)) : 0,
+      timeline,
+      encode: {
+        publishCpuMs: publish.publishCpuMs,
+        encodeRssBytesMax: publish.encodeRssBytesMax,
+        monitor: null,
+      },
+      decode: {
+        receiveCpuMs: expect.receiveCpuMs,
+        decodeRssBytesMax: expect.decodeRssBytesMax,
+        monitor: null,
       },
     };
   }
