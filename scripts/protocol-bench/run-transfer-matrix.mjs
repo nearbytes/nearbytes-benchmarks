@@ -358,7 +358,14 @@ function isRetryableNearbytesError(err) {
 
 async function measureNearbytesOnPair(pair, plan, category, { restartPair } = {}) {
   let activePair = pair;
+  const freshPairEachRep = category === 'local' && restartPair;
   const measured = await measureRepeated('nearbytes', plan, async (rep) => {
+    if (freshPairEachRep && rep > 0) {
+      await activePair.stop().catch(() => {});
+      killStrayProtocolPeers();
+      await new Promise((r) => setTimeout(r, 800));
+      activePair = await restartPair();
+    }
     const maxAttempts = category === 'lan' ? 3 : 2;
     let lastErr;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {

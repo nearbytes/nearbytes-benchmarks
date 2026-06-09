@@ -59,7 +59,7 @@
     "nearbytes-crypto": "github:nearbytes/nearbytes-crypto",
     "nearbytes-engine": "https://github.com/nearbytes/nearbytes-engine.git#commit=f6758f7726eaae3a5949937bf890ee92f02e29f1",
     "nearbytes-files": "https://github.com/nearbytes/nearbytes-files.git#commit=c08023fbe09571a819bb43a18ec2b477acb9e459",
-    "nearbytes-log": "https://github.com/nearbytes/nearbytes-log.git#commit=0a1bef159ead34b542d20af74b8473e2232a90e2",
+    "nearbytes-log": "https://github.com/nearbytes/nearbytes-log.git#commit=60aefbdd6172fc27c88a3e780ddddd8c03fcd999",
     "nearbytes-skeleton": "https://github.com/nearbytes/nearbytes-skeleton.git#commit=c6cf3e968c57e3c11bdfb913778befa53f4477bd"
   },
   "devDependencies": {

@@ -34,7 +34,7 @@ import {
   attachSyncInboundRefresh,
 } from 'nearbytes-engine';
 import { makePayload } from '../benchmark-lib.js';
-import { readBenchMarkers } from './test-markers.js';
+import { createMarkerTail, pollBenchMarkers, readBenchMarkers } from './test-markers.js';
 
 const TEST_CREDENTIALS = {
   profileAlice: 'nearbytes-alice:beautiful-document',
@@ -241,15 +241,14 @@ async function doExpect(
   const expected = cmd.files.map((f) => ({ ...f }));
   const remaining: typeof expected = [...expected];
   const captured: { bytes: number; receivedMs: number; fields: Record<string, unknown> }[] = [];
-  const startMarkers = await readBenchMarkers(ctx.skeleton.log);
-  const startCount = startMarkers.length;
+  const { tail } = await createMarkerTail(ctx.skeleton.log);
   const consumedMarkers = new Set<number>();
   const deadline = Date.now() + cmd.timeoutMs;
   while (remaining.length > 0 && Date.now() < deadline) {
-    const markers = await readBenchMarkers(ctx.skeleton.log);
-    for (let i = startCount; i < markers.length; i++) {
+    const markers = await pollBenchMarkers(ctx.skeleton.log, tail);
+    for (const m of markers) {
+      const i = m.index;
       if (consumedMarkers.has(i)) continue;
-      const m = markers[i];
       if (m.event !== 'bulk-recv-phases') continue;
       const fields = (m.fields ?? {}) as Record<string, unknown>;
       const bytes = Number(fields.bytes ?? 0);

@@ -244,12 +244,15 @@ export class ProtocolPair {
       bytes: f.bytes,
       seed: id * 10000 + i,
     }));
+    const resmon = process.env.NEARBYTES_BENCH_RESMON === '1';
     const monAlice =
-      this.alice.child?.pid > 0 ? startResourceMonitor(this.alice.child.pid) : null;
-    const monBob = this.bob.child?.pid > 0 ? startResourceMonitor(this.bob.child.pid) : null;
+      resmon && this.alice.child?.pid > 0 ? startResourceMonitor(this.alice.child.pid) : null;
+    const monBob =
+      resmon && this.bob.child?.pid > 0 ? startResourceMonitor(this.bob.child.pid) : null;
     let publish;
     let expect;
-    if (overlapExpectEnabled()) {
+    const useOverlap = overlapExpectEnabled() && named.length === 1;
+    if (useOverlap) {
       const expectP = this.bob.send({ cmd: 'expect', id, files: named, timeoutMs });
       await new Promise((r) => setImmediate(r));
       const publishP = this.alice.send({ cmd: 'publish', id, files: named, burst: !!burst });

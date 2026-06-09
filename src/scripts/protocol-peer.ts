@@ -16,7 +16,7 @@ import {
 } from 'nearbytes-engine';
 import { BENCH_CREDENTIALS } from '../benchmark-credentials.js';
 import { makePayload, hrtimeMs } from '../benchmark-lib.js';
-import { readBenchMarkers } from './test-markers.js';
+import { createMarkerTail, pollBenchMarkers, readBenchMarkers } from './test-markers.js';
 import { setupProtocolConfig, type ProtocolRole } from './protocol-peer-config.js';
 import { burstParallelEnabled, pregenPayloadEnabled } from '../optimization-flags.js';
 
@@ -204,13 +204,14 @@ async function doExpectChat(
   cmd: ExpectChatCommand,
 ): Promise<{ received: number; wallMs: number }> {
   const t0 = Date.now();
-  const startMarkers = await readBenchMarkers(rt.skeleton.log);
-  const startCount = startMarkers.filter((m) => m.event === 'inbound-stored' && m.fields.kind === 'event').length;
+  const { tail } = await createMarkerTail(rt.skeleton.log);
   const deadline = Date.now() + cmd.timeoutMs;
   let received = 0;
   while (received < cmd.count && Date.now() < deadline) {
-    const markers = await readBenchMarkers(rt.skeleton.log);
-    received = markers.filter((m) => m.event === 'inbound-stored' && m.fields.kind === 'event').length - startCount;
+    const markers = await pollBenchMarkers(rt.skeleton.log, tail);
+    for (const m of markers) {
+      if (m.event === 'inbound-stored' && m.fields.kind === 'event') received++;
+    }
     if (received >= cmd.count) break;
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -308,16 +309,15 @@ async function doExpect(
   const expected = cmd.files.map((f) => ({ ...f }));
   const remaining: typeof expected = [...expected];
   const captured: { bytes: number; receivedMs: number }[] = [];
-  const startMarkers = await readBenchMarkers(rt.skeleton.log);
-  const startCount = startMarkers.length;
+  const { tail } = await createMarkerTail(rt.skeleton.log);
   const consumedMarkers = new Set<number>();
   const deadline = Date.now() + cmd.timeoutMs;
   while (remaining.length > 0 && Date.now() < deadline) {
     mem.sample();
-    const markers = await readBenchMarkers(rt.skeleton.log);
-    for (let i = startCount; i < markers.length; i++) {
+    const markers = await pollBenchMarkers(rt.skeleton.log, tail);
+    for (const m of markers) {
+      const i = m.index;
       if (consumedMarkers.has(i)) continue;
-      const m = markers[i];
       if (m.event === 'peer-stalled') {
         const reason = String((m.fields as Record<string, unknown> | undefined)?.reason ?? 'unknown');
         throw new Error(`sync peer-stalled: ${reason}`);
