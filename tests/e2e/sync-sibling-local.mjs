@@ -31,7 +31,11 @@ function spawnRole(role, base) {
     },
     stdio: 'inherit',
   });
+  // TEST-21/22: a run killed by the wall clock converged with nothing. Treating
+  // its SIGTERM exit as success turns every hang into a green run.
+  let timedOut = false;
   const wall = setTimeout(() => {
+    timedOut = true;
     console.error(`[${role}] wall ${WALL_SEC}s — SIGTERM`);
     child.kill('SIGTERM');
   }, WALL_SEC * 1000);
@@ -41,7 +45,8 @@ function spawnRole(role, base) {
         child.on('error', reject);
         child.on('exit', (code) => {
           clearTimeout(wall);
-          if (code === 0 || code === 143 || code === null) resolve();
+          if (timedOut) reject(new Error(`${role} hit the ${WALL_SEC}s wall without converging`));
+          else if (code === 0 || code === null) resolve();
           else reject(new Error(`${role} exited ${code}`));
         });
       }),

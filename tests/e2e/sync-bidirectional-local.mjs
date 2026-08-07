@@ -103,6 +103,22 @@ await new Promise((res, rej) => {
 });
 
 const report = JSON.parse(await (await import('fs/promises')).readFile(reportPath, 'utf-8'));
+
+// TEST-21: assert the outcome. Reaching this line only proves both roles exited
+// without crashing; it says nothing about whether the two peers converged, and
+// a run that transfers nothing at all still gets here.
+const failures = [];
+for (const role of ['alice', 'bob']) {
+  const phase = report.phases?.[role];
+  if (!phase) failures.push(`${role}: no phase data in report`);
+  else if (phase.friendSessionMs == null) failures.push(`${role}: never established a friend session`);
+  else if (phase.receiveMs == null) failures.push(`${role}: never completed a receive`);
+}
+if (failures.length > 0) {
+  console.error(`\nBidirectional e2e FAILED:\n  - ${failures.join('\n  - ')}`);
+  console.error(`Report: ${reportPath}`);
+  process.exit(1);
+}
 console.log(`\nBidirectional e2e passed in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
 console.log(`Report: ${reportPath}`);
 if (report.phases?.alice) {
